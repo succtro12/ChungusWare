@@ -21,15 +21,15 @@ tested with minecraft 1.26.5203.0, BetterRTX 1.4.4 and ReShade 6.8.0. future ver
 ## install
 
 1. download **ChungusWare.zip** from [releases](https://github.com/succtro12/ChungusWare/releases). close minecraft and extract it.
-2. copy the supplied files beside `Minecraft.Windows.exe`. xbox app: Manage → Files → Browse.
-3. run **INSTALL CHUNGUS.bat**, review the changes and enter `y`.
-4. launch minecraft. press F8.
+2. copy the supplied files beside `Minecraft.Windows.exe`. xbox app: Manage → Files → Browse, or inside C:\XboxGames\Minecraft for Windows\Content
+3. run **INSTALL CHUNGUS.bat**, review the changes and enter `y` to confirm.
+4. launch minecraft. press F8, pray it works
 
 setup downloads official NVIDIA Streamline 2.14.1 and ReShade 6.8.0, verifies hashes and backs up replaced providers. it stops on unknown loader conflicts or an unwritable folder. dont overwrite unrelated mods.
 
 ## controls
 
-resolution presets: fraudulent dlaa (99.9%), quality, balanced, performance, ultra performance and caca mode (144p).
+resolution presets: fraudulent dlaa (99.9%), quality, balanced, performance, ultra performance and caca mode (144p). dlaa is not 100% as it was causing some problems
 
 fg: off or a supported multiplier. reflex is automatic with fg. diagnostics are under **witness protection**. enable **remember settings** to save selections between launches.
 
