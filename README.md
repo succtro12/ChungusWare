@@ -43,7 +43,7 @@ ReShade, NVIDIA prerequisites, BetterRTX, worlds and settings are preserved.
 
 ## problems / compatibility
 
-this mod works with better rtx 1.4.4 and is recommended to pair with this mod
+works with BetterRTX 1.4.4 and is recommended alongside it
 
 any dlss 5 mods currently do not work, however reshade is available if u wanna add postfx
 
