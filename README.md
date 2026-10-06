@@ -1,79 +1,64 @@
 # ChungusWare
 
-Serious Minecraft Bedrock RTX middleware. Questionable orange control panel.
+cool chungus panel allows nicer visuals.
 
-Ray Reconstruction preset F, internal-resolution presets, NVIDIA-managed frame
-generation and automatic Reflex. Press **F8**; settings apply immediately.
-Fraudulent DLAA keeps almost every pixel. Caca Mode keeps considerably fewer.
+for minecraft bedrock rtx. ray reconstruction preset f, frame generation and reflex in one orange panel. press **F8**. settings change immediately.
 
-## Install
+internal res goes from fraudulent dlaa to quality, balanced, performance, ultra performance and caca mode (144p). fraudulent dlaa keeps 99.9% of the resolution. caca keeps 144 pixels of height and plays the boom. pick what looks good to u.
 
-Download **ChungusWare.zip** from [Releases](https://github.com/succtro12/ChungusWare/releases).
+## install
 
-1. Close Minecraft and extract the ZIP.
-2. Copy its contents beside `Minecraft.Windows.exe` (Xbox app: Manage → Files → Browse).
-3. Run **INSTALL CHUNGUS.bat**, review the plan/terms and enter `y`.
-4. Launch Minecraft. Press F8. Pray.
+get **ChungusWare.zip** from [releases](https://github.com/succtro12/ChungusWare/releases).
 
-Setup downloads the pinned official NVIDIA Streamline 2.14.1 and ReShade 6.8.0
-full-addon releases, verifies hashes, backs up replaced providers and configures
-the loader. It stops on unknown `dxgi.dll`/proxy conflicts or an unwritable folder.
-No administrator elevation, permission changes, service, registry setup or updater.
-The graphics runtime and fictional messages do not need network access.
+1. close minecraft and extract the zip.
+2. copy the supplied files beside `Minecraft.Windows.exe`. xbox app: Manage → Files → Browse.
+3. run **INSTALL CHUNGUS.bat**, read what it will change and enter `y`.
+4. launch minecraft. press F8. thats it.
 
-Windows x64, Minecraft for Windows RTX and supported NVIDIA hardware required.
-FG multipliers depend on the GPU/runtime. Tested with Minecraft 1.26.5203.0,
-RTX 5080, driver 616.56 and BetterRTX 1.4.4 Motion Blur. BetterRTX discovery adapts
-at runtime; future updates can only be proven when they exist. Disable the RenoDX
-DLSS addon; it conflicts with managed FG. Existing ReShade effects/settings stay.
+the bat gets official NVIDIA Streamline 2.14.1 and ReShade 6.8.0 full-addon, checks their hashes, backs up replaced providers and sets up the loader. if it finds an unknown `dxgi.dll`, another proxy or a folder it cant write to, it stops. dont overwrite random mods to get past that.
 
-## Remove / troubleshoot
+no services, registry setup, updater or permission changes. setup needs internet for the downloads. the graphics runtime and messages dont.
 
-Close Minecraft. In `ReShade.ini`, disable the ChungusWare `[PROXY]` entry
-(`EnableProxyLibrary=0`) and remove only `ProxyLibrary=bedrock_rr_loader.dll`.
-Run **REMOVE CHUNGUS.bat**. It checks ownership and preserves ReShade, NVIDIA
-prerequisites, BetterRTX, worlds and settings. Manual removal: delete the seven
-`bedrock_rr_*.dll` files listed by `ChungusWare/package-manifest.json`, its listed
-tools/mascot and both BATs; remove directories only if empty. Keep prerequisite
-backups until any replaced provider has been restored or is no longer needed.
+u need windows x64, minecraft for windows with rtx and supported NVIDIA hardware. available fg multipliers depend on the gpu/runtime. tested on minecraft 1.26.5203.0, RTX 5080, driver 616.56 and BetterRTX 1.4.4 Motion Blur.
 
-F8 missing? Run the install BAT with the game closed. RR/FG unavailable? Check
-prerequisites and **witness protection**. Report game/mod/GPU versions, chosen
-modes and steps to reproduce. Inspect/redact local logs before sharing them.
-No telemetry or automatic bug uploads. Haunted messages never use personal data.
+BetterRTX works in the tested setup. discovery adapts at runtime; future updates still need testing. disable the RenoDX DLSS addon because it conflicts with managed fg. existing ReShade effects and settings stay.
 
-## Build
+## remove it
 
-Visual Studio C++ x64 tools, Windows SDK and CMake 3.24+. Run `Build.ps1` with
-the seven SDK/header directory parameters it declares. Dependencies are external:
-[DLSS](https://github.com/NVIDIA/DLSS), [MinHook](https://github.com/TsudaKageyu/minhook),
-[NVAPI](https://github.com/NVIDIA/nvapi), [Streamline 2.14.1](https://github.com/NVIDIA-RTX/Streamline/releases/tag/v2.14.1),
-[ReShade 6.8.0 source](https://github.com/crosire/reshade/tree/v6.8.0),
-[ImGui 1.92.5 docking headers](https://github.com/ocornut/imgui/tree/v1.92.5-docking),
-and [Microsoft GameInput headers providing `GameInput::v2`](https://www.nuget.org/packages/Microsoft.GameInput).
+close minecraft. in `ReShade.ini`, set the ChungusWare `[PROXY]` entry to `EnableProxyLibrary=0` and remove only `ProxyLibrary=bedrock_rr_loader.dll`. run **REMOVE CHUNGUS.bat**.
+
+it checks which files belong to chungusware. ReShade, NVIDIA prerequisites, BetterRTX, worlds and settings stay.
+
+manual removal also works: delete the seven `bedrock_rr_*.dll` files named in `ChungusWare/package-manifest.json`, the tools/mascot listed there and both bats. only remove folders if empty. keep prerequisite backups until any replaced provider is restored or u no longer need it.
+
+## if its broken
+
+F8 does nothing? run the install bat with minecraft closed. rr or fg missing? check prerequisites and **witness protection**.
+
+for a bug report, include game/mod/gpu versions, the modes u picked and how to make it happen again. check and redact logs before posting them. no telemetry or automatic bug uploads. the messages are static fiction; they dont read personal data.
+
+## build it
+
+Visual Studio C++ x64 tools, Windows SDK and CMake 3.24+. run `Build.ps1` with its seven SDK/header directory parameters. dependencies are external:
+
+- [DLSS](https://github.com/NVIDIA/DLSS)
+- [MinHook](https://github.com/TsudaKageyu/minhook)
+- [NVAPI](https://github.com/NVIDIA/nvapi)
+- [Streamline 2.14.1](https://github.com/NVIDIA-RTX/Streamline/releases/tag/v2.14.1)
+- [ReShade 6.8.0 source](https://github.com/crosire/reshade/tree/v6.8.0)
+- [ImGui 1.92.5 docking headers](https://github.com/ocornut/imgui/tree/v1.92.5-docking)
+- [Microsoft GameInput headers with `GameInput::v2`](https://www.nuget.org/packages/Microsoft.GameInput)
+
 `GameInputSdk` points directly to the folder containing `GameInput.h`.
 
-Tested source revisions: DLSS `374959484e79a640feaba44c93ac8cfb0a03f5b5`,
-MinHook `8af6b4acae5a9388fd742b56fa79ece89d96f823`,
-NVAPI `70d337db9186e968eab622f7e786de7e437faf3d`.
-The build script selects the production managed bridge, not the old experimental
-bridge target. It generates `dist/`; no dependency binaries are committed.
-Rebuilds need new ownership hashes before using the release install/removal scripts.
-The release ZIP remains the exact approved bytes, not a rebuild of this checkout.
-Only dependency-path configuration differs from the approved source snapshot.
+tested revisions: DLSS `374959484e79a640feaba44c93ac8cfb0a03f5b5`, MinHook `8af6b4acae5a9388fd742b56fa79ece89d96f823`, NVAPI `70d337db9186e968eab622f7e786de7e437faf3d`.
 
-## License and assets
+the script builds the production managed bridge into `dist/`. dependency binaries arent in the repo. if u rebuild, update ownership hashes before using the release install/removal scripts.
 
-First-party code is under [MIT](LICENSE). Third-party components and assets have
-separate terms: [notices](THIRD_PARTY_NOTICES.md), [asset provenance](ASSET_NOTES.md).
-Keep these notices with redistributed builds. The optional mascot PNG and embedded
-user-supplied boom have **unverified rights**; neither is claimed original/licensed.
-The mascot is replaceable without rebuilding the renderer. Tahoma is loaded from
-Windows into memory; the bundled fallback atlas uses OFL-licensed W95FA.
+the release zip is the approved build, unchanged. this source checkout only adjusts dependency-path configuration from that snapshot.
 
-ChungusWare is unofficial and is not affiliated with or endorsed by NVIDIA,
-Mojang/Microsoft, BetterRTX, Warner Bros. or their respective affiliates.
+###### license / legal
 
-Release ZIP SHA-256: `59ad9a71a20a7013f7f0d33bdd8ecf1a2b8bb815fcce24d2d41a9f6f59ca72e2`
+<sub>First-party source is furnished pursuant to the <a href="LICENSE">MIT License</a>, without warranty as therein specified. Third-party materials remain subject to their respective terms and notices; no grant herein shall be construed to confer rights therein. See <a href="THIRD_PARTY_NOTICES.md">third-party notices</a> and <a href="ASSET_NOTES.md">asset provenance</a>; retain applicable notices upon redistribution. Rights to the supplied mascot and embedded boom remain unverified; no representation of originality, authorization or clearance is made. The mascot is independently replaceable. Tahoma is loaded locally from Windows; the bundled fallback uses OFL-licensed W95FA. ChungusWare is an unofficial community project and is not affiliated with or endorsed by NVIDIA, Mojang/Microsoft, BetterRTX, Warner Bros., or their respective affiliates. This statement confers no rights.</sub>
 
-maybe the real chungus was the chung we met along the way
+release zip sha-256: `59ad9a71a20a7013f7f0d33bdd8ecf1a2b8bb815fcce24d2d41a9f6f59ca72e2`
