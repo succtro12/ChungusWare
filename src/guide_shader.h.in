@@ -1,0 +1,2 @@
+#pragma once
+inline constexpr char bedrockGuideShader[] = R"BEDROCK_GUIDE(@BEDROCK_GUIDE_SOURCE@)BEDROCK_GUIDE";

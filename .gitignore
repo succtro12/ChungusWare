@@ -1,0 +1,15 @@
+build/
+dist/
+dependencies/
+.vs/
+__pycache__/
+*.pdb
+*.obj
+*.lib
+*.exe
+*.dll
+*.zip
+assets/haunted-lines-audit.json
+assets/portable-asset-provenance.json
+assets/original-impact-alternative.wav
+assets/ui-atlas.png

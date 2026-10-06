@@ -1,0 +1,2 @@
+#pragma once
+static const char* bridgeUnpackShader=R"SHADER(@BRIDGE_UNPACK_SOURCE@)SHADER";

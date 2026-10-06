@@ -1,0 +1,2 @@
+101 WAVE "@CMAKE_CURRENT_SOURCE_DIR@/assets/caca_impact.wav"
+102 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/assets/ui-atlas.rgba"

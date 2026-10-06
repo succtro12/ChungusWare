@@ -1,0 +1,60 @@
+#include "probe_gpu.h"
+#include "frame_generation.h"
+#include "device_identity.h"
+#include <DirectXMath.h>
+#include <array>
+extern "C" BOOL WINAPI FgUpgradeFactory(void**);
+void fgManagedTestPrepare(IDXGISwapChain3*,ID3D12CommandQueue*);
+
+int wmain(int argc,wchar_t** argv){
+ try{
+    auto dir=std::filesystem::path(argc>1?argv[1]:L"fg-present-test");std::filesystem::create_directories(dir);
+    ComPtr<ID3D12Debug> debug;if(SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug))))debug->EnableDebugLayer();
+    auto loader=GetModuleHandleW(L"bedrock_fg_loader_test.dll");auto bypass=loader?reinterpret_cast<void(WINAPI*)(BOOL)>(GetProcAddress(loader,"BedrockRrBypassForThread")):nullptr;if(bypass){bypass(TRUE);ComPtr<IDXGIFactory6> earlyFactory;check(CreateDXGIFactory2(0,IID_PPV_ARGS(&earlyFactory)),"Early factory");ComPtr<IDXGIAdapter1> earlyAdapter;earlyFactory->EnumAdapterByGpuPreference(0,DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,IID_PPV_ARGS(&earlyAdapter));ComPtr<ID3D12Device> earlyDevice;check(D3D12CreateDevice(earlyAdapter.Get(),D3D_FEATURE_LEVEL_12_0,IID_PPV_ARGS(&earlyDevice)),"Early device");ComPtr<ID3D12CommandQueue> earlyQueue;D3D12_COMMAND_QUEUE_DESC earlyDesc{};check(earlyDevice->CreateCommandQueue(&earlyDesc,IID_PPV_ARGS(&earlyQueue)),"Early queue");bypass(FALSE);}
+    Gpu g;ComPtr<IDXGIFactory6> factory;check(CreateDXGIFactory2(0,IID_PPV_ARGS(&factory)),"Factory");if(!GetProcAddress(GetModuleHandleW(L"dxgi.dll"),"ReShadeRegisterAddon")&&!FgUpgradeFactory(reinterpret_cast<void**>(factory.GetAddressOf())))throw std::runtime_error("Factory upgrade failed");ComPtr<IDXGIAdapter1> adapter;check(factory->EnumAdapterByGpuPreference(0,DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,IID_PPV_ARGS(&adapter)),"Adapter");check(D3D12CreateDevice(adapter.Get(),D3D_FEATURE_LEVEL_12_0,IID_PPV_ARGS(&g.device)),"Device");D3D12_COMMAND_QUEUE_DESC q{};check(g.device->CreateCommandQueue(&q,IID_PPV_ARGS(&g.queue)),"Queue");check(g.device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,IID_PPV_ARGS(&g.allocator)),"Allocator");check(g.device->CreateCommandList(0,D3D12_COMMAND_LIST_TYPE_DIRECT,g.allocator.Get(),nullptr,IID_PPV_ARGS(&g.list)),"List");check(g.device->CreateFence(0,D3D12_FENCE_FLAG_NONE,IID_PPV_ARGS(&g.fence)),"Fence");
+    WNDCLASSW wc{};wc.lpfnWndProc=DefWindowProcW;wc.hInstance=GetModuleHandleW(nullptr);wc.lpszClassName=L"BedrockFGTest";RegisterClassW(&wc);HWND hwnd=CreateWindowW(wc.lpszClassName,L"Frame Generation GPU Test",WS_OVERLAPPEDWINDOW,0,0,320,180,nullptr,nullptr,wc.hInstance,nullptr);ShowWindow(hwnd,SW_SHOW);auto ft=GetWindowThreadProcessId(GetForegroundWindow(),nullptr);AttachThreadInput(GetCurrentThreadId(),ft,TRUE);SetForegroundWindow(hwnd);SetFocus(hwnd);AttachThreadInput(GetCurrentThreadId(),ft,FALSE);
+    DXGI_SWAP_CHAIN_DESC1 desc{};desc.Width=320;desc.Height=180;desc.Format=DXGI_FORMAT_R8G8B8A8_UNORM;desc.SampleDesc.Count=1;desc.BufferCount=3;desc.BufferUsage=DXGI_USAGE_RENDER_TARGET_OUTPUT;desc.SwapEffect=DXGI_SWAP_EFFECT_FLIP_DISCARD;ComPtr<IDXGISwapChain1> swap;check(factory->CreateSwapChainForHwnd(g.queue.Get(),hwnd,&desc,nullptr,nullptr,&swap),"Swapchain");ComPtr<IDXGISwapChain3> chain;check(swap.As(&chain),"Swapchain3");
+    constexpr GUID unwrapped={0x7f2c9a11,0x3b4e,0x4d6a,{0x81,0x2f,0x5e,0x9c,0xd3,0x7a,0x1b,0x42}};ComPtr<ID3D12CommandQueue> rawQueue;ComPtr<IDXGISwapChain3> rawChain;ComPtr<IUnknown> obj;
+    if(SUCCEEDED(g.queue->QueryInterface(unwrapped,reinterpret_cast<void**>(obj.GetAddressOf()))))check(obj.As(&rawQueue),"Raw queue");else rawQueue=g.queue;
+    obj.Reset();if(SUCCEEDED(chain->QueryInterface(unwrapped,reinterpret_cast<void**>(obj.GetAddressOf()))))check(obj.As(&rawChain),"Raw chain");else rawChain=chain;
+    fgManagedTestPrepare(rawChain.Get(),rawQueue.Get());
+    auto depth=texture(g.device.Get(),192,108,DXGI_FORMAT_R32_FLOAT,true);auto motion=texture(g.device.Get(),192,108,DXGI_FORMAT_R16G16_FLOAT,true);
+    // Exercise SR after Streamline has initialized NGX on the native device.
+    // ReShade's wrapper must not interpret provider-native CPU descriptors.
+    ComPtr<ID3D12GraphicsCommandList> nativeList;check(g.list->QueryInterface(unwrapped,reinterpret_cast<void**>(nativeList.GetAddressOf())),"Native NGX list");
+    auto ngx=GetModuleHandleW(L"_nvngx.dll");
+    auto capabilities=reinterpret_cast<decltype(&NVSDK_NGX_D3D12_GetCapabilityParameters)>(GetProcAddress(ngx,"NVSDK_NGX_D3D12_GetCapabilityParameters"));
+    auto createSr=reinterpret_cast<decltype(&NVSDK_NGX_D3D12_CreateFeature)>(GetProcAddress(ngx,"NVSDK_NGX_D3D12_CreateFeature"));
+    auto evaluateSr=reinterpret_cast<decltype(&NVSDK_NGX_D3D12_EvaluateFeature)>(GetProcAddress(ngx,"NVSDK_NGX_D3D12_EvaluateFeature"));
+    auto releaseSr=reinterpret_cast<decltype(&NVSDK_NGX_D3D12_ReleaseFeature)>(GetProcAddress(ngx,"NVSDK_NGX_D3D12_ReleaseFeature"));
+    NVSDK_NGX_Parameter* srParams=nullptr;NVSDK_NGX_Handle* srHandle=nullptr;
+    auto srQuery=capabilities(&srParams);if(NVSDK_NGX_FAILED(srQuery))throw std::runtime_error("SR capability query failed");
+    srParams->Set(NVSDK_NGX_Parameter_Width,192u);srParams->Set(NVSDK_NGX_Parameter_Height,108u);srParams->Set(NVSDK_NGX_Parameter_OutWidth,320u);srParams->Set(NVSDK_NGX_Parameter_OutHeight,180u);
+    srParams->Set(NVSDK_NGX_Parameter_CreationNodeMask,1u);srParams->Set(NVSDK_NGX_Parameter_VisibilityNodeMask,1u);srParams->Set(NVSDK_NGX_Parameter_PerfQualityValue,int(NVSDK_NGX_PerfQuality_Value_MaxQuality));
+    srParams->Set(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags,int(NVSDK_NGX_DLSS_Feature_Flags_IsHDR|NVSDK_NGX_DLSS_Feature_Flags_MVLowRes|NVSDK_NGX_DLSS_Feature_Flags_AutoExposure));
+    auto srCreate=createSr(nativeList.Get(),NVSDK_NGX_Feature_SuperSampling,srParams,&srHandle);std::ofstream(dir/L"sr-boundary.json")<<"{\"query\":"<<unsigned(srQuery)<<",\"create\":"<<unsigned(srCreate)<<"}";if(NVSDK_NGX_FAILED(srCreate))throw std::runtime_error("SR creation failed");g.submit();
+    auto srColor=texture(g.device.Get(),192,108,DXGI_FORMAT_R16G16B16A16_FLOAT,true),srOutput=texture(g.device.Get(),320,180,DXGI_FORMAT_R16G16B16A16_FLOAT,true);
+    for(auto r:{depth.Get(),motion.Get()}){D3D12_RESOURCE_BARRIER b{};b.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;b.Transition={r,D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COPY_DEST};g.list->ResourceBarrier(1,&b);}
+    std::vector<float> depths(192*108,2.f),zeros(192*108,0.f);auto up1=upload(g,depth.Get(),depths,1),up2=upload(g,motion.Get(),zeros,1);g.submit();
+    auto transition=[&](ID3D12Resource* r,D3D12_RESOURCE_STATES a,D3D12_RESOURCE_STATES b){D3D12_RESOURCE_BARRIER x{};x.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;x.Transition={r,D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,a,b};g.list->ResourceBarrier(1,&x);};
+    transition(srColor.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    srParams->Set(NVSDK_NGX_Parameter_Color,srColor.Get());srParams->Set(NVSDK_NGX_Parameter_Output,srOutput.Get());srParams->Set(NVSDK_NGX_Parameter_Depth,depth.Get());srParams->Set(NVSDK_NGX_Parameter_MotionVectors,motion.Get());
+    srParams->Set(NVSDK_NGX_Parameter_Reset,1);srParams->Set(NVSDK_NGX_Parameter_MV_Scale_X,192.f);srParams->Set(NVSDK_NGX_Parameter_MV_Scale_Y,108.f);srParams->Set(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Width,192u);srParams->Set(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Height,108u);srParams->Set(NVSDK_NGX_Parameter_DLSS_Pre_Exposure,1.f);srParams->Set(NVSDK_NGX_Parameter_DLSS_Exposure_Scale,1.f);
+    srParams->Set(NVSDK_NGX_Parameter_Jitter_Offset_X,0.f);srParams->Set(NVSDK_NGX_Parameter_Jitter_Offset_Y,0.f);srParams->Set(NVSDK_NGX_Parameter_Sharpness,0.f);srParams->Set(NVSDK_NGX_Parameter_FrameTimeDeltaInMsec,16.666f);
+    srParams->Set(NVSDK_NGX_Parameter_ExposureTexture,static_cast<ID3D12Resource*>(nullptr));srParams->Set(NVSDK_NGX_Parameter_TransparencyMask,static_cast<ID3D12Resource*>(nullptr));
+    auto srEvaluate=evaluateSr(nativeList.Get(),srHandle,srParams,nullptr);g.submit();std::ofstream(dir/L"sr-boundary.json")<<"{\"query\":"<<unsigned(srQuery)<<",\"create\":"<<unsigned(srCreate)<<",\"evaluate\":"<<unsigned(srEvaluate)<<"}";releaseSr(srHandle);if(NVSDK_NGX_FAILED(srEvaluate))throw std::runtime_error("Native SR evaluation failed");
+    std::array<unsigned char,1792> camera{};using namespace DirectX;auto put=[&](unsigned offset,FXMMATRIX m){XMFLOAT4X4 v;XMStoreFloat4x4(&v,m);memcpy(camera.data()+offset,&v,64);};auto proj=XMMatrixPerspectiveFovLH(1.f,320.f/180,.1f,1000.f);put(0,XMMatrixIdentity());put(128,proj);put(192,XMMatrixInverse(nullptr,proj));put(256,XMMatrixIdentity());put(320,XMMatrixInverse(nullptr,proj));put(384,proj);
+    D3D12_DESCRIPTOR_HEAP_DESC hd{D3D12_DESCRIPTOR_HEAP_TYPE_RTV,3};ComPtr<ID3D12DescriptorHeap> rtvs;check(g.device->CreateDescriptorHeap(&hd,IID_PPV_ARGS(&rtvs)),"RTV heap");
+    unsigned count=argc>2?_wtoi(argv[2]):1;fgSelect(count);if(argc>4)fgPacing(unsigned(_wtoi(argv[4])),180);auto begin=std::chrono::steady_clock::now();
+    unsigned testFrames=argc>3?unsigned(_wtoi(argv[3])):120;
+    for(unsigned frame=1;frame<=testFrames;frame++){
+        if(frame==30){UINT masks[]={0,0,0};IUnknown* queues[]={g.queue.Get(),g.queue.Get(),g.queue.Get()};check(chain->ResizeBuffers1(3,320,180,DXGI_FORMAT_R8G8B8A8_UNORM,0,masks,queues),"Managed ResizeBuffers1");}
+        transition(depth.Get(),D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);transition(motion.Get(),D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        fgCapture(g.list.Get(),depth.Get(),motion.Get(),camera.data(),192,108,frame);
+        transition(depth.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);transition(motion.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        ComPtr<ID3D12Resource> bb;check(chain->GetBuffer(chain->GetCurrentBackBufferIndex(),IID_PPV_ARGS(&bb)),"Backbuffer");auto handle=rtvs->GetCPUDescriptorHandleForHeapStart();g.device->CreateRenderTargetView(bb.Get(),nullptr,handle);transition(bb.Get(),D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_RENDER_TARGET);float clear[]={.5f+.3f*sinf(frame*.03f),.3f,.4f,1};g.list->ClearRenderTargetView(handle,clear,0,nullptr);transition(bb.Get(),D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_PRESENT);ID3D12CommandList* lists[]={g.list.Get()};g.submit();fgSubmitted(rawQueue.Get(),1,lists);Sleep(argc>5?DWORD(_wtoi(argv[5])):10);MSG msg;while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}fgManagedTestPrepare(rawChain.Get(),rawQueue.Get());check(chain->Present(1,0),"Present");
+    }
+    ComPtr<ID3D12InfoQueue> iq;unsigned errors=0;if(SUCCEEDED(g.device.As(&iq)))for(UINT64 i=0;i<iq->GetNumStoredMessages();i++){SIZE_T n=0;iq->GetMessage(i,nullptr,&n);std::vector<char> b(n);auto m=reinterpret_cast<D3D12_MESSAGE*>(b.data());iq->GetMessage(i,m,&n);if(m->Severity<=D3D12_MESSAGE_SEVERITY_ERROR){errors++;std::cerr<<m->pDescription<<'\n';}}
+    auto state=fgState();auto delivery=fgDeliveryState();auto seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-begin).count();std::ofstream(dir/L"fps.json")<<"{\"rendered_fps\":"<<testFrames/seconds<<",\"sdk_presented_fps\":"<<state.presented/seconds<<",\"delivered_fps\":"<<delivery.presentedFps<<",\"generated_delivered_fps\":"<<delivery.generatedFps<<",\"etw_rows\":"<<delivery.rows<<",\"mean_ms\":"<<delivery.meanMs<<",\"p99_ms\":"<<delivery.p99Ms<<",\"unknown_labels\":"<<delivery.unknownFrames<<",\"unmatched_rows\":"<<delivery.unmatched<<"}";std::ofstream(dir/L"result.json")<<"{\"evaluations\":"<<state.evaluations<<",\"presented\":"<<state.presented<<",\"debug_errors\":"<<errors<<",\"status\":\""<<state.status<<"\"}\n";fgSelect(0);g.submit();fgShutdown();DestroyWindow(hwnd);return errors||(count&&!state.evaluations)?1:0;
+ }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 2;}
+}
