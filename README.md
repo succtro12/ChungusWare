@@ -33,6 +33,8 @@ ReShade, NVIDIA prerequisites, BetterRTX, worlds and settings are preserved.
 
 ## problems
 
+if it doesn't work u have my condolences
+
 if F8 does nothing, run setup with minecraft closed. for rr/fg failures, check **witness protection**. report versions, selected modes and reproduction steps. redact logs before sharing.
 
 no telemetry. runtime messages are static fiction and use no personal data. only setup downloads require internet.
