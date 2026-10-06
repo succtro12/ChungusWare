@@ -41,7 +41,10 @@ manual removal: delete the seven `bedrock_rr_*.dll` files and tools/mascot named
 
 ReShade, NVIDIA prerequisites, BetterRTX, worlds and settings are preserved.
 
-## problems
+## problems / compatibility
+
+this mod works with better rtx 1.4.4 and is recommended to pair with this mod
+any dlss 5 mods currrently do not work, however reshade is available if u wanna add postfx
 
 if it doesn't work u have my condolences
 
