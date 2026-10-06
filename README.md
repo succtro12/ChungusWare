@@ -1,80 +1,51 @@
 # ChungusWare
 
-cool chungus panel allows nicer visuals.
+minecraft bedrock rtx panel. ray reconstruction preset f, internal resolution, frame generation and reflex. press **F8**. settings apply immediately.
 
-for minecraft bedrock rtx. ray reconstruction preset f, frame generation and reflex in one orange panel. press **F8**. settings change immediately.
+## requirements
 
-internal res goes from fraudulent dlaa to quality, balanced, performance, ultra performance and caca mode (144p). fraudulent dlaa keeps 99.9% of the resolution. caca keeps 144 pixels of height and plays the boom. pick what looks good to u.
+windows x64 and minecraft for windows with rtx. designed for NVIDIA RTX 50 series. other cards are untested. fg multipliers depend on hardware/runtime support.
+
+tested with minecraft 1.26.5203.0, BetterRTX 1.4.4 and ReShade 6.8.0. future versions are untested. disable the RenoDX DLSS addon; it conflicts with managed fg.
 
 ## install
 
-get **ChungusWare.zip** from [releases](https://github.com/succtro12/ChungusWare/releases).
-
-1. close minecraft and extract the zip.
+1. download **ChungusWare.zip** from [releases](https://github.com/succtro12/ChungusWare/releases). close minecraft and extract it.
 2. copy the supplied files beside `Minecraft.Windows.exe`. xbox app: Manage → Files → Browse.
-3. run **INSTALL CHUNGUS.bat**, read what it will change and enter `y`.
-4. launch minecraft. press F8. thats it.
+3. run **INSTALL CHUNGUS.bat**, review the changes and enter `y`.
+4. launch minecraft. press F8.
 
-the bat gets official NVIDIA Streamline 2.14.1 and ReShade 6.8.0, checks their hashes, backs up replaced providers and sets up the loader. if it finds an unknown `dxgi.dll`, another proxy or a folder it cant write to, it stops. dont overwrite random mods to get past that.
+setup downloads official NVIDIA Streamline 2.14.1 and ReShade 6.8.0, verifies hashes and backs up replaced providers. it stops on unknown loader conflicts or an unwritable folder. dont overwrite unrelated mods.
 
-no services, registry setup, updater or permission changes. setup needs internet for the downloads. the graphics runtime and messages dont.
+## controls
 
-designed for NVIDIA RTX 50 series. other cards are untested. u need windows x64 and minecraft for windows with rtx. available fg multipliers depend on the gpu/runtime. tested with minecraft 1.26.5203.0, BetterRTX 1.4.4 and ReShade 6.8.0.
+resolution presets: fraudulent dlaa (99.9%), quality, balanced, performance, ultra performance and caca mode (144p).
 
-BetterRTX works in the tested setup. discovery adapts at runtime; future updates still need testing. disable the RenoDX DLSS addon because it conflicts with managed fg. existing ReShade effects and settings stay.
+fg: off or a supported multiplier. reflex is automatic with fg. diagnostics are under **witness protection**. enable **remember settings** to save selections between launches.
 
-## some of the 5 head stuff
+## remove
 
-**frame pacing:** more fps doesnt automatically mean smoother motion. the normal fg path uses NVIDIA Streamline's managed presentation to schedule real and generated frames, with Reflex at real-frame boundaries. depth and motion guides are synchronized with the gpu queue before they get used. it doesnt just spam extra presents and hope the fps counter looks good.
+close minecraft. in `ReShade.ini`, disable the ChungusWare `[PROXY]` entry with `EnableProxyLibrary=0` and remove only `ProxyLibrary=bedrock_rr_loader.dll`. run **REMOVE CHUNGUS.bat**.
 
-**checking what actually got shown:** witness protection separates rendered fps from presented fps, tracks skipped frames and exposes presentation timing. those numbers help check delivery; they dont replace looking at motion. a higher counter on its own isnt proof of smooth pacing.
+manual removal: delete the seven `bedrock_rr_*.dll` files and tools/mascot named in `ChungusWare/package-manifest.json`, plus both bats. only remove empty folders. keep prerequisite backups until any replaced provider is restored or no longer needed.
 
-**compatibility:** one build for vanilla and BetterRTX. known shader hashes are the quick path. unknown shaders get checked against pass/resource characteristics: bindings, compute layout, formats, dimensions and known resource states. candidates have to validate across multiple frames; ambiguous matches are rejected. validated fingerprints are cached locally, then checked again on later runs. the cache isnt permission to trust a stale shader.
+ReShade, NVIDIA prerequisites, BetterRTX, worlds and settings are preserved.
 
-**safe fallback:** rr needs a compatible set of diffuse, specular and combine passes, plus valid guides. if the evidence doesnt hold up, it falls back to sr and logs why. fg has its own initialization and presentation path. this tries to tolerate changed shaders without a separate BetterRTX build, but it cant promise compatibility with versions nobody has tested yet.
+## problems
 
-## what actually passed
+if F8 does nothing, run setup with minecraft closed. for rr/fg failures, check **witness protection**. report versions, selected modes and reproduction steps. redact logs before sharing.
 
-- vanilla → BetterRTX 1.4.4 → vanilla with the same renderer binaries, including uninstall/reinstall.
-- rr preset f, fg 2x/3x/4x and smooth movement in the live user checks. settings persistence and F8 input capture also passed.
-- the odd-width right-edge fix removed the blue strip both standing still and during a pan.
-- a complete minecraft reinstall exposed missing prerequisites. the revised setup resolved that failure; F8, rr and fg then passed the clean-reinstall check.
+no telemetry. runtime messages are static fiction and use no personal data. only setup downloads require internet.
 
-the full vanilla/BetterRTX transition trial happened before that setup change. these are functional checks and user-observed smoothness, not a controlled fps/latency benchmark. standalone gpu checks reported zero D3D12 validation errors; the live game wasnt running with the debug layer, so thats not a claim of debug-layer certification.
+## build
 
-## remove it
+Visual Studio C++ x64 tools, Windows SDK and CMake 3.24+. run `Build.ps1` with its seven SDK/header directory parameters. `GameInputSdk` must contain `GameInput.h`.
 
-close minecraft. in `ReShade.ini`, set the ChungusWare `[PROXY]` entry to `EnableProxyLibrary=0` and remove only `ProxyLibrary=bedrock_rr_loader.dll`. run **REMOVE CHUNGUS.bat**.
-
-it checks which files belong to chungusware. ReShade, NVIDIA prerequisites, BetterRTX, worlds and settings stay.
-
-manual removal also works: delete the seven `bedrock_rr_*.dll` files named in `ChungusWare/package-manifest.json`, the tools/mascot listed there and both bats. only remove folders if empty. keep prerequisite backups until any replaced provider is restored or u no longer need it.
-
-## if its broken
-
-F8 does nothing? run the install bat with minecraft closed. rr or fg missing? check prerequisites and **witness protection**.
-
-for a bug report, include game/mod/gpu versions, the modes u picked and how to make it happen again. check and redact logs before posting them. no telemetry or automatic bug uploads. the messages are static fiction; they dont read personal data.
-
-## build it
-
-Visual Studio C++ x64 tools, Windows SDK and CMake 3.24+. run `Build.ps1` with its seven SDK/header directory parameters. dependencies are external:
-
-- [DLSS](https://github.com/NVIDIA/DLSS)
-- [MinHook](https://github.com/TsudaKageyu/minhook)
-- [NVAPI](https://github.com/NVIDIA/nvapi)
-- [Streamline 2.14.1](https://github.com/NVIDIA-RTX/Streamline/releases/tag/v2.14.1)
-- [ReShade 6.8.0 source](https://github.com/crosire/reshade/tree/v6.8.0)
-- [ImGui 1.92.5 docking headers](https://github.com/ocornut/imgui/tree/v1.92.5-docking)
-- [Microsoft GameInput headers with `GameInput::v2`](https://www.nuget.org/packages/Microsoft.GameInput)
-
-`GameInputSdk` points directly to the folder containing `GameInput.h`.
+dependencies: [DLSS](https://github.com/NVIDIA/DLSS), [MinHook](https://github.com/TsudaKageyu/minhook), [NVAPI](https://github.com/NVIDIA/nvapi), [Streamline 2.14.1](https://github.com/NVIDIA-RTX/Streamline/releases/tag/v2.14.1), [ReShade 6.8.0](https://github.com/crosire/reshade/tree/v6.8.0), [ImGui 1.92.5 docking](https://github.com/ocornut/imgui/tree/v1.92.5-docking) and [GameInput v2 headers](https://www.nuget.org/packages/Microsoft.GameInput).
 
 tested revisions: DLSS `374959484e79a640feaba44c93ac8cfb0a03f5b5`, MinHook `8af6b4acae5a9388fd742b56fa79ece89d96f823`, NVAPI `70d337db9186e968eab622f7e786de7e437faf3d`.
 
-the script builds the production managed bridge into `dist/`. dependency binaries arent in the repo. if u rebuild, update ownership hashes before using the release install/removal scripts.
-
-the release zip is the approved build, unchanged. this source checkout only adjusts dependency-path configuration from that snapshot.
+output: `dist/`. dependencies are not bundled in the repo. rebuilt binaries need updated ownership hashes for the install/removal scripts. the release zip is unchanged; this checkout only adjusts dependency-path configuration from the approved source snapshot.
 
 ###### license / legal
 
