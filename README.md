@@ -47,6 +47,8 @@ works with BetterRTX 1.4.4 and is recommended alongside it
 
 any dlss 5 mods currently do not work, however reshade is available if u wanna add postfx
 
+some resource packs cause issues with temporal accumulation, kellys rtx is a good baseline
+
 if F8 does nothing, run setup with minecraft closed. for rr/fg failures, check **witness protection**
 
 if it doesn't work u have my condolences
