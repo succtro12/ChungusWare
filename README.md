@@ -2,6 +2,8 @@
 
 minecraft bedrock rtx panel. ray reconstruction preset f, internal resolution, frame generation and reflex. press **F8**. settings apply immediately.
 
+<img width="2560" height="1440" alt="Screenshot (230)" src="https://github.com/user-attachments/assets/a4e3da6c-f3af-4c0d-93b8-c6ffd15e682e" />
+
 ## requirements
 
 windows x64 and minecraft for windows with rtx. designed for NVIDIA RTX 50 series. other cards are untested. fg multipliers depend on hardware/runtime support.
