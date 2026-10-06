@@ -1,8 +1,16 @@
+
 # ChungusWare
 
 minecraft bedrock rtx panel. ray reconstruction preset f, internal resolution, frame generation and reflex. press **F8**. settings apply immediately.
 
 <img width="2560" height="1440" alt="Screenshot (230)" src="https://github.com/user-attachments/assets/a4e3da6c-f3af-4c0d-93b8-c6ffd15e682e" />
+
+<img width="2560" height="1440" alt="Screenshot (229)" src="https://github.com/user-attachments/assets/6d1ca47d-820e-441e-925f-9cc267c3b929" />
+
+<img width="1496" height="761" alt="Screenshot 2026-10-04 140027" src="https://github.com/user-attachments/assets/bcef50d7-ccba-4fa7-95a9-d70a19cc814a" />
+
+<img width="1919" height="983" alt="Screenshot 2026-10-04 140215" src="https://github.com/user-attachments/assets/f5db6daf-6c2e-4d91-aadd-5e10af3b4dab" />
+
 
 ## requirements
 
