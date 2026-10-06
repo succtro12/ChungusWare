@@ -15,13 +15,32 @@ get **ChungusWare.zip** from [releases](https://github.com/succtro12/ChungusWare
 3. run **INSTALL CHUNGUS.bat**, read what it will change and enter `y`.
 4. launch minecraft. press F8. thats it.
 
-the bat gets official NVIDIA Streamline 2.14.1 and ReShade 6.8.0 full-addon, checks their hashes, backs up replaced providers and sets up the loader. if it finds an unknown `dxgi.dll`, another proxy or a folder it cant write to, it stops. dont overwrite random mods to get past that.
+the bat gets official NVIDIA Streamline 2.14.1 and ReShade 6.8.0, checks their hashes, backs up replaced providers and sets up the loader. if it finds an unknown `dxgi.dll`, another proxy or a folder it cant write to, it stops. dont overwrite random mods to get past that.
 
 no services, registry setup, updater or permission changes. setup needs internet for the downloads. the graphics runtime and messages dont.
 
-u need windows x64, minecraft for windows with rtx and supported NVIDIA hardware. available fg multipliers depend on the gpu/runtime. tested on minecraft 1.26.5203.0, RTX 5080, driver 616.56 and BetterRTX 1.4.4 Motion Blur.
+designed for NVIDIA RTX 50 series. other cards are untested. u need windows x64 and minecraft for windows with rtx. available fg multipliers depend on the gpu/runtime. tested with minecraft 1.26.5203.0, BetterRTX 1.4.4 and ReShade 6.8.0.
 
 BetterRTX works in the tested setup. discovery adapts at runtime; future updates still need testing. disable the RenoDX DLSS addon because it conflicts with managed fg. existing ReShade effects and settings stay.
+
+## some of the 5 head stuff
+
+**frame pacing:** more fps doesnt automatically mean smoother motion. the normal fg path uses NVIDIA Streamline's managed presentation to schedule real and generated frames, with Reflex at real-frame boundaries. depth and motion guides are synchronized with the gpu queue before they get used. it doesnt just spam extra presents and hope the fps counter looks good.
+
+**checking what actually got shown:** witness protection separates rendered fps from presented fps, tracks skipped frames and exposes presentation timing. those numbers help check delivery; they dont replace looking at motion. a higher counter on its own isnt proof of smooth pacing.
+
+**compatibility:** one build for vanilla and BetterRTX. known shader hashes are the quick path. unknown shaders get checked against pass/resource characteristics: bindings, compute layout, formats, dimensions and known resource states. candidates have to validate across multiple frames; ambiguous matches are rejected. validated fingerprints are cached locally, then checked again on later runs. the cache isnt permission to trust a stale shader.
+
+**safe fallback:** rr needs a compatible set of diffuse, specular and combine passes, plus valid guides. if the evidence doesnt hold up, it falls back to sr and logs why. fg has its own initialization and presentation path. this tries to tolerate changed shaders without a separate BetterRTX build, but it cant promise compatibility with versions nobody has tested yet.
+
+## what actually passed
+
+- vanilla → BetterRTX 1.4.4 → vanilla with the same renderer binaries, including uninstall/reinstall.
+- rr preset f, fg 2x/3x/4x and smooth movement in the live user checks. settings persistence and F8 input capture also passed.
+- the odd-width right-edge fix removed the blue strip both standing still and during a pan.
+- a complete minecraft reinstall exposed missing prerequisites. the revised setup resolved that failure; F8, rr and fg then passed the clean-reinstall check.
+
+the full vanilla/BetterRTX transition trial happened before that setup change. these are functional checks and user-observed smoothness, not a controlled fps/latency benchmark. standalone gpu checks reported zero D3D12 validation errors; the live game wasnt running with the debug layer, so thats not a claim of debug-layer certification.
 
 ## remove it
 
