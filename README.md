@@ -43,6 +43,8 @@ ReShade, NVIDIA prerequisites, BetterRTX, worlds and settings are preserved.
 
 ## problems / compatibility
 
+[v1.01 changes](CHANGELOG.md). water/cloud and glass fixes are included. dark cave water at night can still be noisy with rr. saved fg can occasionally start with worse fps; toggling fg on then off recovered it during testing.
+
 works with BetterRTX 1.4.4 and is recommended alongside it
 
 any dlss 5 mods currently do not work, however reshade is available if u wanna add postfx
@@ -61,10 +63,10 @@ dependencies: [DLSS](https://github.com/NVIDIA/DLSS), [MinHook](https://github.c
 
 tested revisions: DLSS `374959484e79a640feaba44c93ac8cfb0a03f5b5`, MinHook `8af6b4acae5a9388fd742b56fa79ece89d96f823`, NVAPI `70d337db9186e968eab622f7e786de7e437faf3d`.
 
-output: `dist/`. dependencies are not bundled in the repo. rebuilt binaries need updated ownership hashes for the install/removal scripts. the release zip is unchanged; this checkout only adjusts dependency-path configuration from the approved source snapshot.
+output: `dist/`. dependencies are not bundled in the repo. rebuilt binaries need updated ownership hashes for the install/removal scripts. release builds enable the shared transparency correction and disable input captures/test controls.
 
 ###### license / legal
 
 <sub>First-party source is furnished pursuant to the <a href="LICENSE">MIT License</a>, without warranty as therein specified. Third-party materials remain subject to their respective terms and notices; no grant herein shall be construed to confer rights therein. See <a href="THIRD_PARTY_NOTICES.md">third-party notices</a> and <a href="ASSET_NOTES.md">asset provenance</a>; retain applicable notices upon redistribution. Rights to the supplied mascot and embedded boom remain unverified; no representation of originality, authorization or clearance is made. The mascot is independently replaceable. Tahoma is loaded locally from Windows; the bundled fallback uses OFL-licensed W95FA. ChungusWare is an unofficial community project and is not affiliated with or endorsed by NVIDIA, Mojang/Microsoft, BetterRTX, Warner Bros., or their respective affiliates. This statement confers no rights.</sub>
 
-release zip sha-256: `59ad9a71a20a7013f7f0d33bdd8ecf1a2b8bb815fcce24d2d41a9f6f59ca72e2`
+v1.01 zip sha-256: `311fc06ec382415cb75bb9082896437490b2c6def5ad8829f9ea73a6390af458`

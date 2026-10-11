@@ -107,7 +107,13 @@ uint64_t dump(const void* p,size_t n,const char* suffix){
     if(!std::filesystem::exists(path)){std::ofstream f(path,std::ios::binary);f.write(static_cast<const char*>(p),n);}
     return h;
 }
-bool knownPass(uint64_t h){return h==0x17e950ce2bdc6a38ull||h==0x7905c7545a3c35b3ull||h==0xe91e519842717ad4ull||h==0xa2c049a5a3f59ee4ull;}
+bool knownPass(uint64_t h){return h==0x17e950ce2bdc6a38ull||h==0x7905c7545a3c35b3ull||h==0xe91e519842717ad4ull||h==0xa2c049a5a3f59ee4ull
+#ifdef CHUNGUSWARE_TRANSPARENCY_TRIAL
+ // Inspected BetterRTX CheckerboardInterleave: same field mapping, t18
+ // transmission convention and four-tap gather. Unknown variants stay out.
+ ||h==0xd42323fa90bfb5ceull||h==0xfcfd281b5e5a8ba8ull
+#endif
+ ;}
 void inspectPass(uint64_t h,const void* bytes,size_t size){
     if(knownPass(h)||passEvidence.contains(h))return;
     auto& e=passEvidence[h];e.profile=shader_contract::inspect(bytes,size);
@@ -395,7 +401,11 @@ void bridgePass(ID3D12GraphicsCommandList* list,UINT x,UINT y,UINT z,bool after)
                     if(VirtualQuery(ptr,&info,sizeof(info))&&info.State==MEM_COMMIT&&!(info.Protect&(PAGE_NOACCESS|PAGE_GUARD))&&uintptr_t(ptr)+camera.size()<=uintptr_t(info.BaseAddress)+info.RegionSize){memcpy(camera.data(),ptr,camera.size());cameraBytes=UINT(camera.size());}break;}}
             }break;
         }
-        if(knownPass(saved.shader)&&cameraBytes==camera.size()){
+        if(knownPass(saved.shader)&&cameraBytes==camera.size()
+#ifdef CHUNGUSWARE_TRANSPARENCY_TRIAL
+           &&saved.shader!=0xd42323fa90bfb5ceull&&saved.shader!=0xfcfd281b5e5a8ba8ull
+#endif
+        ){
             UINT frame=0;memcpy(&frame,camera.data()+1352,4);
             unsigned role=identifiedShader==0xa2c049a5a3f59ee4ull?3:identifiedShader==0xe91e519842717ad4ull?2:1;
             validatedRoleFrame[role]=frame;
@@ -465,7 +475,11 @@ void bridgePass(ID3D12GraphicsCommandList* list,UINT x,UINT y,UINT z,bool after)
     if(!knownPass(saved.shader)){std::lock_guard guard(mutex);auto e=passEvidence.find(saved.shader);pass.extraOutput14=e!=passEvidence.end()&&shader_contract::has(e->second.profile,6,14);}
     for(size_t i=0;i<std::min(size_t(3),saved.constants[0].size());i++)pass.constants[i]=saved.constants[0][i];
     bridgeCamera=camera;bridgeLightingSrvSpace=lightingSrvSpace;bridgeAuxiliaryBuffer=auxiliaryBuffer;bridgeExtraOutput14=pass.extraOutput14;bridgeExecuting=true;try{callback(&pass);}catch(...){}
-    if(identifiedShader==0xa2c049a5a3f59ee4ull)restoreState(list,saved);
+    if(identifiedShader==0xa2c049a5a3f59ee4ull
+#ifdef CHUNGUSWARE_TRANSPARENCY_TRIAL
+ ||identifiedShader==0xd42323fa90bfb5ceull||identifiedShader==0xfcfd281b5e5a8ba8ull
+#endif
+ )restoreState(list,saved);
     else {std::lock_guard guard(mutex);states[list]=saved;}
     bridgeExecuting=false;bridgeLightingSrvSpace=0;bridgeAuxiliaryBuffer=false;
 }

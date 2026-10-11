@@ -21,7 +21,10 @@ int wmain(int argc,wchar_t** argv){
     auto depth=texture(g.device.Get(),192,108,DXGI_FORMAT_R32_FLOAT,true);auto motion=texture(g.device.Get(),192,108,DXGI_FORMAT_R16G16_FLOAT,true);
     // Exercise SR after Streamline has initialized NGX on the native device.
     // ReShade's wrapper must not interpret provider-native CPU descriptors.
-    ComPtr<ID3D12GraphicsCommandList> nativeList;check(g.list->QueryInterface(unwrapped,reinterpret_cast<void**>(nativeList.GetAddressOf())),"Native NGX list");
+    ComPtr<ID3D12GraphicsCommandList> nativeList;
+    auto unwrapResult=g.list->QueryInterface(unwrapped,reinterpret_cast<void**>(nativeList.GetAddressOf()));
+    if(FAILED(unwrapResult)&&!GetProcAddress(GetModuleHandleW(L"dxgi.dll"),"ReShadeRegisterAddon"))nativeList=g.list;
+    else check(unwrapResult,"Native NGX list");
     auto ngx=GetModuleHandleW(L"_nvngx.dll");
     auto capabilities=reinterpret_cast<decltype(&NVSDK_NGX_D3D12_GetCapabilityParameters)>(GetProcAddress(ngx,"NVSDK_NGX_D3D12_GetCapabilityParameters"));
     auto createSr=reinterpret_cast<decltype(&NVSDK_NGX_D3D12_CreateFeature)>(GetProcAddress(ngx,"NVSDK_NGX_D3D12_CreateFeature"));
@@ -47,7 +50,10 @@ int wmain(int argc,wchar_t** argv){
     D3D12_DESCRIPTOR_HEAP_DESC hd{D3D12_DESCRIPTOR_HEAP_TYPE_RTV,3};ComPtr<ID3D12DescriptorHeap> rtvs;check(g.device->CreateDescriptorHeap(&hd,IID_PPV_ARGS(&rtvs)),"RTV heap");
     unsigned count=argc>2?_wtoi(argv[2]):1;fgSelect(count);if(argc>4)fgPacing(unsigned(_wtoi(argv[4])),180);auto begin=std::chrono::steady_clock::now();
     unsigned testFrames=argc>3?unsigned(_wtoi(argv[3])):120;
+    bool cycle=argc>6&&!wcscmp(argv[6],L"--cycle");
     for(unsigned frame=1;frame<=testFrames;frame++){
+        if(cycle&&(frame==15||frame==60))fgSelect(2);
+        if(cycle&&(frame==45||frame==90))fgSelect(0);
         if(frame==30){UINT masks[]={0,0,0};IUnknown* queues[]={g.queue.Get(),g.queue.Get(),g.queue.Get()};check(chain->ResizeBuffers1(3,320,180,DXGI_FORMAT_R8G8B8A8_UNORM,0,masks,queues),"Managed ResizeBuffers1");}
         transition(depth.Get(),D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);transition(motion.Get(),D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         fgCapture(g.list.Get(),depth.Get(),motion.Get(),camera.data(),192,108,frame);

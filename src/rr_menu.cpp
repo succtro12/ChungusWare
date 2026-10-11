@@ -99,6 +99,16 @@ void draw(reshade::api::effect_runtime* runtime){
     model.renderer=int(state.mode);model.fg=int(fg.requested);model.maximumFg=int(fg.maximum);model.pacing=int(fg.pacingMode);model.target=fg.targetFps;model.domain=state.domain==2?0:state.domain==1?1:2;model.rrActive=state.rrActive;model.reflex=fg.requested>0;model.status=lowercase(fg.status);
     if(state.width&&state.outputWidth)model.dimensions=format("%u x %u -> %u x %u",state.width,state.height,state.outputWidth,state.outputHeight);
     model.diagnostics={format("rr: %s / preset f",state.rrActive?"active":"fallback"),format("rr evaluations: %u",state.evaluations),format("rendered: %.1f fps",fg.renderedFps),format("delivered: %.1f fps",delivery.presentedFps),format("generated: %.1f fps",delivery.generatedFps),format("avg: %.3f ms",delivery.meanMs),format("p99: %.3f ms",delivery.p99Ms),format("worst: %.3f ms",delivery.worstMs),format("real > gen: %.3f ms",delivery.realToGeneratedMs),format("gen > real: %.3f ms",delivery.generatedToRealMs),format("drops: %u / unmatched: %u",delivery.droppedGenerated,delivery.unmatched),format("display: %.0f hz",fg.refreshHz),"reflex: partial / auto with fg",format("mouse v2: %s",v2Ready?"ready":"waiting"),format("blocked samples: %u",rrGameInputV2Blocked())};
+    if(!delivery.available){
+        model.diagnostics[3]="delivered: unavailable";
+        model.diagnostics[4]="generated: unavailable";
+        model.diagnostics[5]="avg: unavailable";
+        model.diagnostics[6]="p99: unavailable";
+        model.diagnostics[7]="worst: unavailable";
+        model.diagnostics[8]="real > gen: unavailable";
+        model.diagnostics[9]="gen > real: unavailable";
+        model.diagnostics[10]=lowercase(delivery.status);
+    }
     uint32_t width=0,height=0;runtime->get_screenshot_width_and_height(&width,&height);if(!width||!height)return;
     chungus_ui::Input input;uint32_t x=0,y=0;runtime->get_mouse_cursor_position(&x,&y);input.x=float(x);input.y=float(y);input.down=runtime->is_mouse_button_down(0);input.pressed=runtime->is_mouse_button_pressed(0);input.released=runtime->is_mouse_button_released(0);input.tab=runtime->is_key_pressed(VK_TAB);input.shift=runtime->is_key_down(VK_SHIFT);input.enter=runtime->is_key_pressed(VK_RETURN)||runtime->is_key_pressed(VK_SPACE);input.up=runtime->is_key_pressed(VK_UP);input.below=runtime->is_key_pressed(VK_DOWN);input.time=std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     model.rabbitMessage=rabbitMessage;model.rabbitTier=rabbitTier;model.remember=rememberSettings;

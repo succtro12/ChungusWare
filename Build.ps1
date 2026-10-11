@@ -17,7 +17,8 @@ $cmake=Join-Path $vsRoot 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin
 $options=@(('-DDLSS_SDK:PATH='+$DlssSdk),('-DMINHOOK_SOURCE:PATH='+$MinHookSource),
     ('-DRESHADE_SDK:PATH='+$ReShadeSdk),('-DIMGUI_HEADERS:PATH='+$ImGuiHeaders),
     ('-DNVAPI_SDK:PATH='+$NvApiSdk),('-DSTREAMLINE_SDK:PATH='+$StreamlineSdk),
-    ('-DGAMEINPUT_SDK:PATH='+$GameInputSdk),'-DCHUNGUSWARE_TEST_CONTROL=OFF')
+    ('-DGAMEINPUT_SDK:PATH='+$GameInputSdk),'-DCHUNGUSWARE_TEST_CONTROL=OFF',
+    '-DCHUNGUSWARE_RR_INPUT_DIAGNOSTIC=OFF','-DCHUNGUSWARE_TRANSPARENCY_TRIAL=ON')
 & $cmake -S $PSScriptRoot -B $BuildDirectory -A x64 @options
 if($LASTEXITCODE){throw 'CMake configuration failed'}
 $targets=@('bedrock_rr_bridge_managed','bedrock_rr_capture','bedrock_rr_ngx_observer',

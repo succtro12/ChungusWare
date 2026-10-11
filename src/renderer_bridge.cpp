@@ -34,7 +34,13 @@ NVSDK_NGX_Result NVSDK_CONV bridgeNgxCreate(ID3D12GraphicsCommandList*,NVSDK_NGX
 #include "bridge_unpack.h"
 #include "rr_menu.h"
 #include "frame_generation.h"
+#ifdef CHUNGUSWARE_RR_INPUT_DIAGNOSTIC
+#include "rr_input_crop.h"
+#endif
 using Microsoft::WRL::ComPtr;
+#ifdef CHUNGUSWARE_TRANSPARENCY_TRIAL
+#include "transparency_resolve.h"
+#endif
 namespace bridge {
 HMODULE module;std::mutex mutex;std::ofstream log;std::filesystem::path directory;
 thread_local bool recording=false;
@@ -45,6 +51,10 @@ decltype(&NVSDK_NGX_D3D12_GetCapabilityParameters) getCapabilities=nullptr;
 decltype(&NVSDK_NGX_D3D12_DestroyParameters) destroyParameters=nullptr;
 decltype(&NVSDK_NGX_D3D12_ReleaseFeature) releaseFeature=nullptr;
 ComPtr<ID3D12Device> device;bedrock_rr::GuideConversion guides;bedrock_rr::BridgeUnpack unpack;
+#ifdef CHUNGUSWARE_TRANSPARENCY_TRIAL
+bedrock_rr::TransparencyResolve transparentResolve;bool transparentReady=false;
+bool currentState(ID3D12GraphicsCommandList*,ID3D12Resource*,D3D12_RESOURCE_STATES&);
+#endif
 NVSDK_NGX_Handle* feature=nullptr;NVSDK_NGX_Parameter* parameters=nullptr;
 unsigned width=0,height=0,allocationHeight=0,allocationWidth=0,targetWidth=0,targetHeight=0,mode=0,evaluations=0;
 unsigned liveWidth=0,liveHeight=0,liveOutputWidth=0,liveOutputHeight=0;bool rrDisplayed=false;
@@ -60,11 +70,37 @@ struct Slot {
     std::array<ComPtr<ID3D12Resource>,7> inputs;
     std::array<ComPtr<ID3D12Resource>,6> combineOutputs;
     ComPtr<ID3D12Resource> combineAuxiliary;
+#ifdef CHUNGUSWARE_TRANSPARENCY_TRIAL
+    ComPtr<ID3D12Resource> transparencyDepth,transparencyDirection;
+    ComPtr<ID3D12DescriptorHeap> transparencyHeap;
+    bool transparencyApplied=false,transparencyEdge=false;
+#endif
     ComPtr<ID3D12Resource> output,domain,readback;D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};UINT64 readbackBytes=0,domainReadbackOffset=0;;
     ComPtr<ID3D12DescriptorHeap> guideHeap,unpackHeap,combineHeap,handoffHeap;
     ComPtr<ID3D12Fence> fence;ComPtr<ID3D12CommandQueue> queue;UINT64 fenceValue=0;
+#ifdef CHUNGUSWARE_RR_INPUT_DIAGNOSTIC
+    std::array<D3D12_PLACED_SUBRESOURCE_FOOTPRINT,7> inputCrop{};
+    unsigned cropX=0,cropY=0;
+    std::array<float,2> diagnosticJitter{},diagnosticMvScale{};
+    float diagnosticDelta=0;
+    std::array<D3D12_PLACED_SUBRESOURCE_FOOTPRINT,2> nativeCrop{};
+    bool nativeCropAvailable=false;
+#ifdef CHUNGUSWARE_TRANSPARENCY_TRIAL
+    std::array<ComPtr<ID3D12Resource>,10> layerInputs;
+    std::array<D3D12_PLACED_SUBRESOURCE_FOOTPRINT,20> layerCrop{};
+    unsigned layerX=0,layerY=0,layerField=0;
+    bool layerCropAvailable=false;
+    ComPtr<ID3D12Resource> layerPosition;
+    std::array<D3D12_PLACED_SUBRESOURCE_FOOTPRINT,2> positionCrop{};
+    bool positionCropAvailable=false;
+#endif
+#endif
 };
 std::array<Slot*,3> slots{};
+#ifdef CHUNGUSWARE_RR_INPUT_DIAGNOSTIC
+float diagnosticU=.5f,diagnosticV=.5f;
+bool diagnosticFull=false;
+#endif
 std::string hex(uint64_t value){std::ostringstream s;s<<"0x"<<std::hex<<value;return s.str();}
 void emit(const std::string& event){log<<event<<'\n';log.flush();}
 void skip(const char* reason,unsigned frame){static std::unordered_map<std::string,unsigned> counts;if(counts[reason]++<12)emit("{\"event\":\"bridge_skip\",\"frame\":"+std::to_string(frame)+",\"reason\":\""+reason+"\"}");}
@@ -100,7 +136,53 @@ void pollReadback(){if(outputRead)return;for(auto s:slots)if(s&&s->readbackPendi
     auto outputDesc=s->output->GetDesc();unsigned rw=unsigned(outputDesc.Width),rh=outputDesc.Height;
     unsigned invalid=0;double sum=0;for(unsigned y=0;y<rh;y++){auto row=reinterpret_cast<const unsigned short*>(static_cast<const char*>(data)+s->footprint.Offset+size_t(y)*s->footprint.Footprint.RowPitch);for(unsigned x=0;x<rw;x++)for(unsigned c=0;c<3;c++){float v=halfFloat(row[x*4+c]);if(!std::isfinite(v))invalid++;else sum+=std::abs(v);}}
     float domainFactor=0;memcpy(&domainFactor,static_cast<const char*>(data)+s->domainReadbackOffset,4);emit("{\"event\":\"rr_domain_gpu_snapshot\",\"frame\":"+std::to_string(s->frame)+",\"scene_domain\":"+std::to_string(s->sceneDomain)+",\"native_handoff_multiplier\":"+std::to_string(domainFactor)+"}");
-    std::ofstream dump(directory/L"first-rr-frame.rgba16f",std::ios::binary);dump.write(static_cast<const char*>(data),s->readbackBytes);s->readback->Unmap(0,nullptr);
+    std::ofstream dump(directory/L"first-rr-frame.rgba16f",std::ios::binary);dump.write(static_cast<const char*>(data),s->readbackBytes);
+#ifdef CHUNGUSWARE_RR_INPUT_DIAGNOSTIC
+    const char* names[]={"colour","normal-roughness","diffuse-albedo","specular-albedo","depth","motion","hit-distance"};
+    // The live bridge uses R32F hit distance; also accept R16F captures.
+    const unsigned pixelBytes[]={8,8,8,8,4,4,s->inputCrop[6].Footprint.Format==DXGI_FORMAT_R32_FLOAT?4u:2u};
+    std::ofstream metadata(directory/L"rr-input-crop.json");
+    metadata<<"{\"frame\":"<<s->frame<<",\"render_width\":"<<width<<",\"render_height\":"<<height<<",\"output_width\":"<<rw<<",\"output_height\":"<<rh<<",\"jitter\":["<<s->diagnosticJitter[0]<<','<<s->diagnosticJitter[1]<<"],\"mv_scale\":["<<s->diagnosticMvScale[0]<<','<<s->diagnosticMvScale[1]<<"],\"delta_ms\":"<<s->diagnosticDelta<<",\"x\":"<<s->cropX<<",\"y\":"<<s->cropY<<",\"width\":"<<s->inputCrop[0].Footprint.Width<<",\"height\":"<<s->inputCrop[0].Footprint.Height<<",\"channels\":[";
+    for(unsigned i=0;i<7;i++){
+        const auto& fp=s->inputCrop[i];std::string file=std::string("rr-input-")+names[i]+".bin";
+        std::ofstream input(directory/file,std::ios::binary);
+        for(unsigned row=0;row<fp.Footprint.Height;row++)input.write(static_cast<const char*>(data)+fp.Offset+size_t(row)*fp.Footprint.RowPitch,size_t(fp.Footprint.Width)*pixelBytes[i]);
+        if(i)metadata<<',';metadata<<"{\"file\":\""<<file<<"\",\"format\":"<<unsigned(fp.Footprint.Format)<<",\"pixel_bytes\":"<<pixelBytes[i]<<'}';
+    }
+    if(s->nativeCropAvailable){
+        const char* nativeNames[]={"native-colour","native-depth"};
+        const unsigned nativePixelBytes[]={8,4};
+        for(unsigned i=0;i<2;i++){
+            const auto& fp=s->nativeCrop[i];std::string file=std::string("rr-input-")+nativeNames[i]+".bin";
+            std::ofstream input(directory/file,std::ios::binary);
+            for(unsigned row=0;row<fp.Footprint.Height;row++)input.write(static_cast<const char*>(data)+fp.Offset+size_t(row)*fp.Footprint.RowPitch,size_t(fp.Footprint.Width)*nativePixelBytes[i]);
+            metadata<<",{\"file\":\""<<file<<"\",\"format\":"<<unsigned(fp.Footprint.Format)<<",\"pixel_bytes\":"<<nativePixelBytes[i]<<'}';
+        }
+    }
+#ifdef CHUNGUSWARE_TRANSPARENCY_TRIAL
+    std::ofstream(directory/L"rr-input-view-matrix.bin",std::ios::binary).write(reinterpret_cast<const char*>(s->camera.data()),64);
+    std::ofstream(directory/L"rr-input-projection-matrix.bin",std::ios::binary).write(reinterpret_cast<const char*>(s->camera.data()+128),64);
+    if(s->layerCropAvailable){
+        const char* layerNames[]={"colour","transmission","depth","motion","normal-roughness","diffuse-albedo","specular-albedo","hit-distance","raw-diffuse","raw-specular"};
+        const unsigned layerBytes[]={8,8,4,4,8,8,8,2,8,8};
+        for(unsigned i=0;i<20;i++){
+            const auto& fp=s->layerCrop[i];unsigned bytes=layerBytes[i%10];
+            std::string file=std::string("rr-input-layer-")+(i<10?"left-":"right-")+layerNames[i%10]+".bin";std::ofstream input(directory/file,std::ios::binary);
+            for(unsigned row=0;row<fp.Footprint.Height;row++)input.write(static_cast<const char*>(data)+fp.Offset+size_t(row)*fp.Footprint.RowPitch,size_t(fp.Footprint.Width)*bytes);
+            metadata<<",{\"file\":\""<<file<<"\",\"format\":"<<unsigned(fp.Footprint.Format)<<",\"pixel_bytes\":"<<bytes<<",\"physical_x\":"<<s->layerX+(i>=10?s->layerField:0)<<",\"physical_y\":"<<s->layerY<<'}';
+        }
+    }
+    if(s->positionCropAvailable)for(unsigned bank=0;bank<2;bank++){
+        const auto& fp=s->positionCrop[bank];unsigned bytes=fp.Footprint.Format==DXGI_FORMAT_R32G32B32A32_FLOAT?16:8;
+        std::string file=std::string("rr-input-layer-")+(bank?"right-position.bin":"left-position.bin");
+        std::ofstream input(directory/file,std::ios::binary);
+        for(unsigned row=0;row<fp.Footprint.Height;row++)input.write(static_cast<const char*>(data)+fp.Offset+size_t(row)*fp.Footprint.RowPitch,size_t(fp.Footprint.Width)*bytes);
+        metadata<<",{\"file\":\""<<file<<"\",\"format\":"<<unsigned(fp.Footprint.Format)<<",\"pixel_bytes\":"<<bytes<<",\"physical_x\":"<<s->layerX+bank*s->layerField<<",\"physical_y\":"<<s->layerY<<'}';
+    }
+#endif
+    metadata<<"]}";
+#endif
+    s->readback->Unmap(0,nullptr);
     emit("{\"event\":\"rr_gpu_completed\",\"frame\":"+std::to_string(s->frame)+",\"fence_value\":"+std::to_string(s->fenceValue)+",\"width\":"+std::to_string(rw)+",\"height\":"+std::to_string(rh)+",\"row_pitch\":"+std::to_string(s->footprint.Footprint.RowPitch)+",\"nonfinite_rgb\":"+std::to_string(invalid)+",\"mean_abs_rgb\":"+std::to_string(sum/(rw*rh*3))+",\"device_removed_reason\":\""+hex(unsigned(device->GetDeviceRemovedReason()))+"\"}");outputRead=true;s->readbackPending=false;return;
 }}
 void queueSubmitted(ID3D12CommandQueue* queue,UINT count,ID3D12CommandList*const* lists){if(recording||fgRecording())return;fgSubmitted(queue,count,lists);std::lock_guard guard(mutex);for(auto s:slots)if(s&&s->busy&&!s->fenceValue){auto submittedList=s->evaluated?s->consumer:s->producer;bool found=false;for(UINT i=0;i<count;i++)if(lists[i]==submittedList)found=true;if(!found)continue;
@@ -137,9 +219,50 @@ void pass(const BridgePass* p){std::lock_guard lock(mutex);if(!p||p->cameraBytes
     Slot* s=nullptr;for(auto slot:slots)if(slot&&slot->busy&&slot->frame==frame)s=slot;
     if(diffuse){if(s)return;for(auto& slot:slots){if(slot&&slot->busy&&slot->fenceValue&&slot->fence->GetCompletedValue()>=slot->fenceValue)slot->busy=false;
             if(!slot)slot=allocateSlot();if(!slot->busy){s=slot;break;}}
-        if(!s){skip("All bridge buffers are in flight",frame);return;}s->busy=true;s->raw=false;s->prepared=false;s->evaluated=false;s->independentGuides=false;s->frame=frame;s->producer=p->list;s->consumer=nullptr;s->fenceValue=0;s->fence.Reset();s->queue.Reset();memcpy(s->camera.data(),p->camera,1792);return;}
+        if(!s){skip("All bridge buffers are in flight",frame);return;}s->busy=true;s->raw=false;s->prepared=false;s->evaluated=false;s->independentGuides=false;s->frame=frame;s->producer=p->list;s->consumer=nullptr;s->fenceValue=0;s->fence.Reset();s->queue.Reset();memcpy(s->camera.data(),p->camera,1792);
+#ifdef CHUNGUSWARE_TRANSPARENCY_TRIAL
+        s->transparencyApplied=false;
+#ifdef CHUNGUSWARE_RR_INPUT_DIAGNOSTIC
+        s->layerInputs={};
+        s->layerPosition.Reset();
+#endif
+#endif
+        return;}
     if(!s)return;
+#ifdef CHUNGUSWARE_TRANSPARENCY_TRIAL
+    if(p->shader==0xd42323fa90bfb5ceull||p->shader==0xfcfd281b5e5a8ba8ull){
+        if(!s->prepared||s->transparencyApplied||s->producer!=p->list)return;
+        auto cache=find(*p,'S',18);if(!cache||!cache->resource||!s->transparencyDepth||!s->transparencyDirection)return;
+        std::array<ID3D12Resource*,9> sources={s->combineOutputs[3].Get(),s->physicalGuides[0].Get(),s->physicalGuides[1].Get(),s->physicalGuides[2].Get(),s->transparencyDepth.Get(),s->snapshot.resource(bedrock_rr::RawLightingSnapshot::SpecularDistance),s->transparencyDirection.Get(),cache->resource,s->domain.Get()};
+        std::array<D3D12_RESOURCE_STATES,9> original{};original.fill(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        for(unsigned i:{4u,6u,7u})if(!currentState(p->list,sources[i],original[i])||(original[i]&D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)==0){skip("Transparent input state unavailable",frame);return;}
+        auto cd=cache->resource->GetDesc();
+        if(cd.Dimension!=D3D12_RESOURCE_DIMENSION_TEXTURE2D||cd.SampleDesc.Count!=1||cd.Format!=DXGI_FORMAT_R16G16B16A16_FLOAT||cd.Width<width||cd.Height<height){skip("Transparent cache shape unsupported",frame);return;}
+#ifdef CHUNGUSWARE_RR_INPUT_DIAGNOSTIC
+        auto layerMotion=find(*p,'S',22);
+        s->layerInputs={s->combineOutputs[3],cache->resource,s->transparencyDepth,layerMotion?layerMotion->resource:nullptr,
+            s->physicalGuides[0],s->physicalGuides[1],s->physicalGuides[2],
+            s->snapshot.resource(bedrock_rr::RawLightingSnapshot::SpecularDistance),
+            s->snapshot.resource(bedrock_rr::RawLightingSnapshot::Diffuse),
+            s->snapshot.resource(bedrock_rr::RawLightingSnapshot::Specular)};
+#endif
+        if(!transparentReady){transparentReady=transparentResolve.initialize(device.Get());if(!transparentReady){skip(transparentResolve.error.c_str(),frame);return;}}
+        if(!s->transparencyHeap)s->transparencyHeap=heap(15);
+        for(unsigned i=0;i<9;i++)srv(s->transparencyHeap.Get(),i,sources[i]);
+        unsigned outputs[]={0,1,2,3,4,6};for(unsigned i=0;i<6;i++)uav(s->transparencyHeap.Get(),9+i,s->inputs[outputs[i]].Get());
+        for(unsigned i:{0u,1u,2u,3u,5u,8u})transition(p->list,sources[i],original[i],D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        float view[16];memcpy(view,p->camera,64);
+        transparentResolve.record(p->list,s->transparencyHeap.Get(),width,height,unsigned(readFloat(p->camera,1280)),frame,view,s->transparencyEdge);
+        for(unsigned i:{0u,1u,2u,3u,5u,8u})transition(p->list,sources[i],D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,original[i]);
+        s->transparencyApplied=true;
+        if(evaluations<3||evaluations%120==0)emit("{\"event\":\"rr_transparency_resolved\",\"frame\":"+std::to_string(frame)+",\"shader\":\""+hex(p->actualShader?p->actualShader:p->shader)+"\",\"native_history_used\":false,\"native_outputs_written\":false}");
+        return;
+    }
+#endif
     if(p->shader==0xe91e519842717ad4ull){if(s->producer!=p->list){skip("Raw producers are on different lists",frame);return;}
+#if defined(CHUNGUSWARE_RR_INPUT_DIAGNOSTIC) && defined(CHUNGUSWARE_TRANSPARENCY_TRIAL)
+        auto position=find(*p,'S',45);s->layerPosition=position?position->resource:nullptr;
+#endif
         bool changed=p->actualShader&&p->actualShader!=p->shader;
         std::array<ID3D12Resource*,4> source{};std::array<D3D12_RESOURCE_STATES,4> sourceStates;sourceStates.fill(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);unsigned regs[]={5,6,28,15};for(unsigned i=0;i<4;i++){auto b=find(*p,'U',regs[i]);if(!b||!b->resource||(changed&&!b->stateKnown)||(b->stateKnown&&b->state!=D3D12_RESOURCE_STATE_UNORDERED_ACCESS&&!(changed&&i==3&&(b->state==D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE||b->state==(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE|D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE))))){skip("Raw producer resource/state mismatch",frame);return;}source[i]=b->resource;if(changed)sourceStates[i]=b->state;}
         if(!s->snapshot.record(p->list,source,sourceStates)){skip("Native raw snapshot contract mismatch",frame);return;}s->raw=true;
@@ -183,9 +306,13 @@ void pass(const BridgePass* p){std::lock_guard lock(mutex);if(!p||p->cameraBytes
     for(unsigned i:{0u,1u,2u,3u,6u})transition(p->list,source[i],D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     float view[16];memcpy(view,p->camera,64);float scale=readFloat(p->camera,1248)<readFloat(p->camera,1264)?4.f:1.f;
     if(evaluations<2)emit("{\"event\":\"rr_exposure_domain\",\"frame\":"+std::to_string(frame)+",\"input\":\"linear_hdr\",\"scene_domain\":"+std::to_string(sceneDomain)+",\"duplicate_exposure_removed\":true,\"native_post_rr_exposure_adjustment\":"+std::to_string(scale==4.f)+"}");
-    s->sceneDomain=sceneDomain;unpack.record(p->list,s->unpackHeap.Get(),s->unpackHeap->GetGPUDescriptorHandleForHeapStart(),width,height,unsigned(readFloat(p->camera,1280)),frame,readUint(p->camera,1460),scale,view,s->sceneDomain,p->shader==0x4453efec959d476aull);
+    const bool extendOddEdge=(p->actualShader?p->actualShader:p->shader)==0x4453efec959d476aull;
+    s->sceneDomain=sceneDomain;unpack.record(p->list,s->unpackHeap.Get(),s->unpackHeap->GetGPUDescriptorHandleForHeapStart(),width,height,unsigned(readFloat(p->camera,1280)),frame,readUint(p->camera,1460),scale,view,s->sceneDomain,extendOddEdge);
     for(unsigned i:{0u,1u,2u,3u,6u})transition(p->list,source[i],D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     s->prepared=true;
+#ifdef CHUNGUSWARE_TRANSPARENCY_TRIAL
+    s->transparencyDepth=source[4];s->transparencyDirection=source[8];s->transparencyEdge=extendOddEdge;
+#endif
     // Changed renderer contracts publish independently validated guides at
     // their producer boundary. FG must not depend on RR feature evaluation.
     // Preserve the accepted known-hash vanilla capture boundary unchanged.
@@ -198,6 +325,24 @@ bool runtime(){if(createFeature)return true;auto ngx=GetModuleHandleW(L"_nvngx.d
 void copyRect(ID3D12GraphicsCommandList* list,ID3D12Resource* to,ID3D12Resource* from){D3D12_TEXTURE_COPY_LOCATION dst{},src{};dst.pResource=to;src.pResource=from;dst.Type=src.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;D3D12_BOX rect{0,0,0,width,height,1};list->CopyTextureRegion(&dst,0,0,0,&src,&rect);}
 struct SrCall {Slot* slot;ID3D12GraphicsCommandList* list;const NVSDK_NGX_Parameter* native;bool replacesSr=false;};
 void recordEvaluation(void* data){auto& call=*static_cast<SrCall*>(data);auto s=call.slot;auto list=call.list;
+#ifdef CHUNGUSWARE_RR_INPUT_DIAGNOSTIC
+    // Explicit local one-shot request after positioning in the world. This
+    // affects diagnostic readback only, never RR history or feature options.
+    if(evaluations%119==0){
+        std::error_code ec;auto request=directory/L"request-rr-input-crop.once";
+        if(std::filesystem::exists(request,ec)&&!ec){
+            float u=.5f,v=.5f;unsigned full=0;std::ifstream coordinates(request);coordinates>>u>>v>>full;coordinates.close();
+            if(!std::isfinite(u)||!std::isfinite(v)||u<0||u>1||v<0||v>1){u=.5f;v=.5f;}
+            if(std::filesystem::remove(request,ec)&&!ec){
+            diagnosticU=u;diagnosticV=v;
+            diagnosticFull=full==1;
+            for(auto slot:slots)if(slot)slot->readbackPending=false;
+            outputRead=false;
+            emit("{\"event\":\"rr_input_capture_requested\",\"frame\":"+std::to_string(s->frame)+"}");
+            }
+        }
+    }
+#endif
     ID3D12Resource* nativeOutput=nullptr;
     call.native->Get(NVSDK_NGX_Parameter_Output,&nativeOutput);
     if(!nativeOutput){skip("Native SR output missing",s->frame);return;}
@@ -260,6 +405,9 @@ void recordEvaluation(void* data){auto& call=*static_cast<SrCall*>(data);auto s=
     }
 
     p.InPreExposure=1;p.InExposureScale=1;auto now=std::chrono::steady_clock::now();p.InFrameTimeDeltaInMsec=evaluations?float(std::chrono::duration<double,std::milli>(now-lastTime).count()):16.667f;lastTime=now;p.InFrameTimeDeltaInMsec=std::clamp(p.InFrameTimeDeltaInMsec,1.f,1000.f);p.InReset=!evaluations||s->frame!=lastEvaluatedFrame+1||s->sceneDomain!=lastSceneDomain;p.InRenderSubrectDimensions={width,height};
+#ifdef CHUNGUSWARE_RR_INPUT_DIAGNOSTIC
+    s->diagnosticJitter={p.InJitterOffsetX,p.InJitterOffsetY};s->diagnosticMvScale={p.InMVScaleX,p.InMVScaleY};s->diagnosticDelta=p.InFrameTimeDeltaInMsec;
+#endif
     for(auto& r:s->inputs)transition(list,r.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     auto result=NGX_D3D12_EVALUATE_DLSSD_EXT(list,feature,parameters,&p);ordering(list);
     for(auto& r:s->inputs)transition(list,r.Get(),D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -268,8 +416,82 @@ void recordEvaluation(void* data){auto& call=*static_cast<SrCall*>(data);auto s=
     if(evaluations<=8||!succeeded)emit("{\"event\":\"rr_evaluate_minecraft_frame\",\"call\":\"_nvngx.dll!NVSDK_NGX_D3D12_EvaluateFeature\",\"frame\":"+std::to_string(s->frame)+",\"list\":\""+hex(uintptr_t(list))+"\",\"raw_producer_list\":\""+hex(uintptr_t(s->producer))+"\",\"handle\":\""+hex(uintptr_t(feature))+"\",\"result\":\""+hex(unsigned(result))+"\",\"mv_scale\":["+std::to_string(p.InMVScaleX)+","+std::to_string(p.InMVScaleY)+"],\"jitter\":["+std::to_string(p.InJitterOffsetX)+","+std::to_string(p.InJitterOffsetY)+"],\"reset\":"+std::to_string(p.InReset)+",\"evaluations\":"+std::to_string(evaluations)+",\"display_mode\":"+std::to_string(mode)+"}");
     s->consumer=list;s->evaluated=true;
     if(succeeded&&!s->independentGuides)fgCapture(list,s->inputs[4].Get(),s->inputs[5].Get(),s->camera.data(),width,height,s->frame);
-    if(succeeded&&!outputRead&&!s->readbackPending){auto desc=s->output->GetDesc();device->GetCopyableFootprints(&desc,0,1,0,&s->footprint,nullptr,nullptr,&s->readbackBytes);s->domainReadbackOffset=(s->readbackBytes+511)&~UINT64(511);s->readbackBytes=s->domainReadbackOffset+256;D3D12_RESOURCE_DESC rd{};rd.Dimension=D3D12_RESOURCE_DIMENSION_BUFFER;rd.Width=s->readbackBytes;rd.Height=1;rd.DepthOrArraySize=1;rd.MipLevels=1;rd.SampleDesc.Count=1;rd.Layout=D3D12_TEXTURE_LAYOUT_ROW_MAJOR;D3D12_HEAP_PROPERTIES hp{};hp.Type=D3D12_HEAP_TYPE_READBACK;
+    if(succeeded&&!outputRead&&!s->readbackPending){auto desc=s->output->GetDesc();device->GetCopyableFootprints(&desc,0,1,0,&s->footprint,nullptr,nullptr,&s->readbackBytes);s->domainReadbackOffset=(s->readbackBytes+511)&~UINT64(511);s->readbackBytes=s->domainReadbackOffset+256;
+#ifdef CHUNGUSWARE_RR_INPUT_DIAGNOSTIC
+        s->readbackBytes=bedrock_rr::planInputCrop(device.Get(),s->inputs,width,height,s->readbackBytes,s->cropX,s->cropY,s->inputCrop,diagnosticFull);
+        s->cropX=unsigned(std::clamp(int(width*diagnosticU)-int(s->inputCrop[0].Footprint.Width/2),0,int(width-s->inputCrop[0].Footprint.Width)));
+        s->cropY=unsigned(std::clamp(int(height*diagnosticV)-int(s->inputCrop[0].Footprint.Height/2),0,int(height-s->inputCrop[0].Footprint.Height)));
+        std::array<ComPtr<ID3D12Resource>,2> nativeInputs{};
+        std::array<D3D12_RESOURCE_STATES,2> nativeStates{};
+#ifdef CHUNGUSWARE_TRANSPARENCY_TRIAL
+        s->layerCropAvailable=false;
+        std::array<D3D12_RESOURCE_STATES,10> layerStates{};
+        s->layerField=unsigned(readFloat(s->camera.data(),1280));
+        bool layerValid=s->layerField>=128&&s->layerField<=width;
+        for(unsigned i=0;i<10&&layerValid;i++){
+            // Raw replay output is bridge-owned and restored to UAV after unpack.
+            layerStates[i]=D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            layerValid=s->layerInputs[i]&&((i==0||i>=4)||currentState(list,s->layerInputs[i].Get(),layerStates[i]));
+            if(layerValid){auto d=s->layerInputs[i]->GetDesc();layerValid=d.Dimension==D3D12_RESOURCE_DIMENSION_TEXTURE2D&&d.Width>=2*s->layerField&&d.Height>=height&&d.SampleDesc.Count==1&&d.Format==(i==2?DXGI_FORMAT_R32_FLOAT:i==3?DXGI_FORMAT_R16G16_FLOAT:i==7?DXGI_FORMAT_R16_FLOAT:DXGI_FORMAT_R16G16B16A16_FLOAT);}
+        }
+        if(layerValid){
+            std::array<D3D12_PLACED_SUBRESOURCE_FOOTPRINT,10> fp;
+            for(unsigned bank=0;bank<2;bank++){
+                s->readbackBytes=bedrock_rr::planInputCrop(device.Get(),s->layerInputs,s->layerField,height,s->readbackBytes,s->layerX,s->layerY,fp);
+                for(unsigned i=0;i<10;i++)s->layerCrop[bank*10+i]=fp[i];
+            }s->layerCropAvailable=true;
+            s->layerX=unsigned(std::clamp(int((s->cropX+s->inputCrop[0].Footprint.Width/2)/2)-64,0,int(s->layerField-128)));
+            s->layerY=unsigned(std::clamp(int(height*diagnosticV)-64,0,int(height-128)));
+        }
+        s->positionCropAvailable=false;
+        D3D12_RESOURCE_STATES positionState{};
+        if(s->layerCropAvailable&&s->layerPosition&&currentState(list,s->layerPosition.Get(),positionState)){
+            auto d=s->layerPosition->GetDesc();
+            if(d.Dimension==D3D12_RESOURCE_DIMENSION_TEXTURE2D&&d.Width>=2*s->layerField&&d.Height>=height&&d.SampleDesc.Count==1&&
+                (d.Format==DXGI_FORMAT_R32G32B32A32_FLOAT||d.Format==DXGI_FORMAT_R16G16B16A16_FLOAT)){
+                std::array<ComPtr<ID3D12Resource>,1> resources={s->layerPosition};
+                std::array<D3D12_PLACED_SUBRESOURCE_FOOTPRINT,1> fp;unsigned x=0,y=0;
+                for(unsigned bank=0;bank<2;bank++){
+                    s->readbackBytes=bedrock_rr::planInputCrop(device.Get(),resources,s->layerField,height,s->readbackBytes,x,y,fp);
+                    s->positionCrop[bank]=fp[0];
+                }s->positionCropAvailable=true;
+            }
+        }
+        emit("{\"event\":\"rr_layer_crop_contract\",\"available\":"+std::string(s->layerCropAvailable?"true":"false")+",\"field_width\":"+std::to_string(s->layerField)+"}");
+#endif
+        ID3D12Resource* nativeDepth=nullptr;call.native->Get(NVSDK_NGX_Parameter_Depth,&nativeDepth);
+        s->nativeCropAvailable=false;
+        if(nativeDepth){
+            auto depthDesc=nativeDepth->GetDesc();
+            if(depthDesc.Dimension==D3D12_RESOURCE_DIMENSION_TEXTURE2D&&depthDesc.SampleDesc.Count==1&&depthDesc.Format==DXGI_FORMAT_R32_FLOAT&&depthDesc.Width>=width&&depthDesc.Height>=height&&currentState(list,nativeDepth,nativeStates[1])){
+                nativeInputs[0]=nativeColour;nativeInputs[1]=nativeDepth;nativeStates[0]=colourState;
+                unsigned nx=0,ny=0;
+                s->readbackBytes=bedrock_rr::planInputCrop(device.Get(),nativeInputs,width,height,s->readbackBytes,nx,ny,s->nativeCrop,diagnosticFull);
+                s->nativeCropAvailable=true;
+            }
+            emit("{\"event\":\"rr_native_crop_contract\",\"frame\":"+std::to_string(s->frame)+",\"available\":"+(s->nativeCropAvailable?"true":"false")+",\"depth_format\":"+std::to_string(unsigned(depthDesc.Format))+",\"depth_dimensions\":["+std::to_string(depthDesc.Width)+","+std::to_string(depthDesc.Height)+"]}");
+        }
+#endif
+        D3D12_RESOURCE_DESC rd{};rd.Dimension=D3D12_RESOURCE_DIMENSION_BUFFER;rd.Width=s->readbackBytes;rd.Height=1;rd.DepthOrArraySize=1;rd.MipLevels=1;rd.SampleDesc.Count=1;rd.Layout=D3D12_TEXTURE_LAYOUT_ROW_MAJOR;D3D12_HEAP_PROPERTIES hp{};hp.Type=D3D12_HEAP_TYPE_READBACK;
         s->readback.Reset();if(SUCCEEDED(device->CreateCommittedResource(&hp,D3D12_HEAP_FLAG_NONE,&rd,D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&s->readback)))){s->readbackPending=true;transition(list,s->output.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COPY_SOURCE);D3D12_TEXTURE_COPY_LOCATION dst{},src{};dst.pResource=s->readback.Get();dst.Type=D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;dst.PlacedFootprint=s->footprint;src.pResource=s->output.Get();src.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;list->CopyTextureRegion(&dst,0,0,0,&src,nullptr);transition(list,s->output.Get(),D3D12_RESOURCE_STATE_COPY_SOURCE,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);transition(list,s->domain.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COPY_SOURCE);dst.PlacedFootprint={s->domainReadbackOffset,{DXGI_FORMAT_R32_FLOAT,1,1,1,256}};src.pResource=s->domain.Get();list->CopyTextureRegion(&dst,0,0,0,&src,nullptr);transition(list,s->domain.Get(),D3D12_RESOURCE_STATE_COPY_SOURCE,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+#ifdef CHUNGUSWARE_RR_INPUT_DIAGNOSTIC
+        bedrock_rr::recordInputCrop(list,s->readback.Get(),s->inputs,s->cropX,s->cropY,s->inputCrop);
+        if(s->nativeCropAvailable)bedrock_rr::recordInputCrop(list,s->readback.Get(),nativeInputs,s->cropX,s->cropY,s->nativeCrop,&nativeStates);
+#ifdef CHUNGUSWARE_TRANSPARENCY_TRIAL
+        if(s->layerCropAvailable)for(unsigned bank=0;bank<2;bank++){
+            std::array<D3D12_PLACED_SUBRESOURCE_FOOTPRINT,10> fp;
+            for(unsigned i=0;i<10;i++)fp[i]=s->layerCrop[bank*10+i];
+            bedrock_rr::recordInputCrop(list,s->readback.Get(),s->layerInputs,s->layerX+bank*s->layerField,s->layerY,fp,&layerStates);
+        }
+        if(s->positionCropAvailable)for(unsigned bank=0;bank<2;bank++){
+            std::array<ComPtr<ID3D12Resource>,1> resources={s->layerPosition};
+            std::array<D3D12_PLACED_SUBRESOURCE_FOOTPRINT,1> fp={s->positionCrop[bank]};
+            std::array<D3D12_RESOURCE_STATES,1> states={positionState};
+            bedrock_rr::recordInputCrop(list,s->readback.Get(),resources,s->layerX+bank*s->layerField,s->layerY,fp,&states);
+        }
+#endif
+#endif
+
         }}
     if((mode==1||mode==2)&&succeeded){
         auto source=mode==1?s->inputs[0].Get():s->output.Get();auto destination=mode==1?nativeColour:nativeOutput;auto nativeState=mode==1?colourState:outputState;

@@ -37,7 +37,10 @@ void testObserveNgx(){if(testOriginalEvaluate)return;auto dll=GetModuleHandleW(L
 namespace managed_fg {
 std::recursive_mutex mutex;
 thread_local bool internal=false;
-bool ready=false,paused=false,configured=false;unsigned pacingMode=0;float targetFps=0,refreshHz=0;unsigned lastWorldFrame=0;
+bool ready=false,paused=false,configured=false;
+// Disabled is a mode, not proof that options reached the live runtime.
+bool optionsApplied=false,worldOptionsApplied=false,worldSeen=false;
+unsigned pacingMode=0;float targetFps=0,refreshHz=0;unsigned lastWorldFrame=0;
 unsigned requested=0,maximum=1,evaluations=0,presented=0,lastResult=0,frame=0,sequence=0;
 unsigned skipped=0;
 const char* status="Off";
@@ -91,6 +94,7 @@ HRESULT STDMETHODCALLTYPE resize1(IDXGISwapChain3* swap,UINT count,UINT w,UINT h
     if(!i)identity=canonical.Get();else if(identity!=canonical.Get())singleQueue=false;
  }
  auto result=singleQueue?swap->ResizeBuffers(count,w,h,format,flags):originalResize1(swap,count,w,h,format,flags,nodes,queues);
+ if(SUCCEEDED(result)){std::lock_guard guard(mutex);optionsApplied=false;worldOptionsApplied=false;worldSeen=false;}
  report(singleQueue?"Managed single-queue ResizeBuffers1 via ResizeBuffers":"Managed ResizeBuffers1",unsigned(result),count);return result;
 }
 struct Snapshot {
@@ -168,13 +172,26 @@ bool initialize(){
 }
 bool getFeatures(){if(setOptions&&getState&&reflexOptions&&reflexSleep&&marker)return true;bool valid=feature(setOptions,sl::kFeatureDLSS_G,"slDLSSGSetOptions")&&feature(getState,sl::kFeatureDLSS_G,"slDLSSGGetState")&&feature(reflexOptions,sl::kFeatureReflex,"slReflexSetOptions")&&feature(reflexSleep,sl::kFeatureReflex,"slReflexSleep")&&feature(marker,sl::kFeaturePCL,"slPCLSetMarker");if(valid){sl::DLSSGState state{};auto r=getState(viewport,state,nullptr);report("slDLSSGGetState(capabilities)",unsigned(r),state.numFramesToGenerateMax);if(r==sl::Result::eOk)maximum=std::clamp(state.numFramesToGenerateMax,1u,5u);}return valid;}
 void configure(bool enabled){
- if(!getFeatures())return;sl::ReflexOptions r{};r.mode=enabled?sl::ReflexMode::eLowLatency:sl::ReflexMode::eOff;float target=targetFps>0?targetFps:refreshHz;r.frameLimitUs=enabled&&pacingMode==1&&target>0?unsigned(1000000.0/target):0;ok("slReflexSetOptions",reflexOptions(r));sl::DLSSGOptions o{};o.mode=enabled?sl::DLSSGMode::eOn:sl::DLSSGMode::eOff;o.numFramesToGenerate=std::max(1u,requested);o.flags=sl::DLSSGFlags::eDynamicResolutionEnabled;if(ok("slDLSSGSetOptions",setOptions(viewport,o)))configured=enabled;fg_delivery::featureEnabled=configured;report("Reflex limit microseconds",0,r.frameLimitUs);
+ if(!getFeatures())return;sl::ReflexOptions r{};r.mode=enabled?sl::ReflexMode::eLowLatency:sl::ReflexMode::eOff;float target=targetFps>0?targetFps:refreshHz;r.frameLimitUs=enabled&&pacingMode==1&&target>0?unsigned(1000000.0/target):0;
+ bool reflexApplied=ok("slReflexSetOptions",reflexOptions(r));sl::DLSSGOptions o{};o.mode=enabled?sl::DLSSGMode::eOn:sl::DLSSGMode::eOff;o.numFramesToGenerate=std::max(1u,requested);o.flags=sl::DLSSGFlags::eDynamicResolutionEnabled;
+ bool fgApplied=ok("slDLSSGSetOptions",setOptions(viewport,o));if(fgApplied)configured=enabled;
+ optionsApplied=reflexApplied&&fgApplied;
+ worldOptionsApplied=optionsApplied&&worldSeen;
+ fg_delivery::featureEnabled=configured;report("Reflex limit microseconds",0,r.frameLimitUs);
+ log<<"{\"event\":\"managed_options_applied\",\"success\":"<<(optionsApplied?"true":"false")<<",\"enabled\":"<<(configured?"true":"false")<<",\"world_ready\":"<<(worldOptionsApplied?"true":"false")<<",\"generated_requested\":"<<o.numFramesToGenerate<<",\"limit_us\":"<<r.frameLimitUs<<"}\n";log.flush();
+ if(chain){DXGI_SWAP_CHAIN_DESC1 desc{};UINT latency=0;auto dr=chain->GetDesc1(&desc);auto lr=chain->GetMaximumFrameLatency(&latency);
+  log<<"{\"event\":\"managed_swapchain_state\",\"enabled\":"<<(configured?"true":"false")<<",\"desc_result\":"<<unsigned(dr)<<",\"size\":["<<desc.Width<<","<<desc.Height<<"],\"buffers\":"<<desc.BufferCount<<",\"flags\":"<<desc.Flags<<",\"latency_result\":"<<unsigned(lr)<<",\"latency\":"<<latency<<"}\n";log.flush();}
+ if(chain&&getNative){void* value=nullptr;if(getNative(chain,&value)==sl::Result::eOk&&value){ComPtr<IUnknown> owner;owner.Attach(static_cast<IUnknown*>(value));ComPtr<IDXGISwapChain3> native;if(SUCCEEDED(owner.As(&native))){DXGI_SWAP_CHAIN_DESC1 desc{};UINT latency=0;auto dr=native->GetDesc1(&desc);auto lr=native->GetMaximumFrameLatency(&latency);
+  log<<"{\"event\":\"native_swapchain_state\",\"enabled\":"<<(configured?"true":"false")<<",\"desc_result\":"<<unsigned(dr)<<",\"buffers\":"<<desc.BufferCount<<",\"flags\":"<<desc.Flags<<",\"latency_result\":"<<unsigned(lr)<<",\"latency\":"<<latency<<"}\n";log.flush();}}}
 }
 sl::Constants constants(const Snapshot& s,unsigned ow,unsigned oh){
  using namespace DirectX;sl::Constants c{};auto mat=[&](unsigned offset){XMFLOAT4X4 m;memcpy(&m,s.camera.data()+offset,64);return XMLoadFloat4x4(&m);};auto save=[](sl::float4x4& out,FXMMATRIX m){XMFLOAT4X4 f;XMStoreFloat4x4(&f,m);memcpy(&out,&f,64);};save(c.cameraViewToClip,mat(128));save(c.clipToCameraView,mat(192));save(c.clipToLensClip,XMMatrixIdentity());auto cp=XMMatrixMultiply(mat(320),mat(384));save(c.clipToPrevClip,cp);save(c.prevClipToClip,XMMatrixInverse(nullptr,cp));float p[16],v[16],j[2];memcpy(p,s.camera.data()+128,64);memcpy(v,s.camera.data()+256,64);memcpy(j,s.camera.data()+1304,8);c.jitterOffset={-j[0],-j[1]};c.cameraPinholeOffset={0,0};c.mvecScale={1,1};c.cameraPos={v[12],v[13],v[14]};c.cameraRight={v[0],v[1],v[2]};c.cameraUp={v[4],v[5],v[6]};auto sign=p[11]<0?-1.f:1.f;c.cameraFwd={v[8]*sign,v[9]*sign,v[10]*sign};float a=std::abs(p[14]/p[10]),b=std::abs(p[14]/(p[10]-p[11]));c.cameraNear=std::min(a,b);c.cameraFar=std::max(a,b);c.cameraFOV=2*atanf(1/std::abs(p[5]));c.cameraAspectRatio=float(ow)/oh;c.depthInverted=b<a?sl::eTrue:sl::eFalse;c.cameraMotionIncluded=sl::eTrue;c.motionVectors3D=sl::eFalse;c.reset=!lastWorldFrame||s.worldFrame!=lastWorldFrame+1?sl::eTrue:sl::eFalse;return c;
 }
 void capture(ID3D12GraphicsCommandList* list,ID3D12Resource* z,ID3D12Resource* mv,const unsigned char* camera,unsigned w,unsigned h,unsigned worldFrame){
- std::lock_guard guard(mutex);if(!requested||paused||!ready)return;
+ std::lock_guard guard(mutex);
+ // Observe world readiness even when FG is off; no guide allocation/copy.
+ if(ready&&list&&z&&mv&&camera&&w&&h)worldSeen=true;
+ if(!requested||paused||!ready)return;
  if(!device){check(list->GetDevice(IID_PPV_ARGS(&device)));setupDepth();}
  Snapshot* slot=nullptr;for(auto& s:snapshots)if(!s.pending&&!s.tagged&&(!s.producerValue||s.producerFence->GetCompletedValue()>=s.producerValue)&&(!s.inputsValue||s.inputsFence->GetCompletedValue()>=s.inputsValue)){slot=&s;break;}if(!slot)return;auto& s=*slot;
  if(s.width!=w||s.height!=h){s.depth=texture(w,h,DXGI_FORMAT_R32_FLOAT,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);s.motion=texture(w,h,DXGI_FORMAT_R16G16_FLOAT,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);s.width=w;s.height=h;D3D12_DESCRIPTOR_HEAP_DESC hd{D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,2,D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE};check(device->CreateDescriptorHeap(&hd,IID_PPV_ARGS(&s.heap)));if(!s.producerFence)check(device->CreateFence(0,D3D12_FENCE_FLAG_NONE,IID_PPV_ARGS(&s.producerFence)));}
@@ -213,7 +230,7 @@ void prepareFrame(ID3D12CommandQueue* queue,IDXGISwapChain3* current){
  rrTestControlPoll();
 #endif
  if(!ready)return;std::lock_guard guard(mutex);Internal scope;
- if(chain!=current){chain=current;configured=false;token=nullptr;sequence=0;}
+ if(chain!=current){chain=current;configured=false;optionsApplied=false;worldOptionsApplied=false;worldSeen=false;token=nullptr;sequence=0;}
  if(!getFeatures()){status="Managed FG feature initialization failed";return;}
 #ifdef FG_MANAGED_TEST
  testObserveNgx();
@@ -222,7 +239,8 @@ void prepareFrame(ID3D12CommandQueue* queue,IDXGISwapChain3* current){
  auto now=std::chrono::steady_clock::now();if(now-lastRefreshQuery>=std::chrono::seconds(1)){lastRefreshQuery=now;ComPtr<IDXGIOutput> output;DXGI_OUTPUT_DESC outputDesc{};DEVMODEW display{};display.dmSize=sizeof(display);if(SUCCEEDED(chain->GetContainingOutput(&output))&&SUCCEEDED(output->GetDesc(&outputDesc))&&EnumDisplaySettingsW(outputDesc.DeviceName,ENUM_CURRENT_SETTINGS,&display)&&display.dmDisplayFrequency>1)refreshHz=float(display.dmDisplayFrequency);}
  bool enabled=pacingMode!=2&&requested&&!paused&&newest&&newest->producerValue;
  if(requested&&!enabled){const char* reason=pacingMode==2?"diagnostic pacing mode":paused?"explicit pause":!newest?"no captured depth/motion/camera producer":"producer has no submitted queue fence";static std::string previous;static unsigned logged=0;if(previous!=reason&&logged++<32){previous=reason;log<<"{\"event\":\"fg_prepare_rejected\",\"reason\":\""<<reason<<"\",\"requested\":"<<requested<<",\"world_frame\":"<<frame<<",\"swapchain\":\""<<chain<<"\",\"queue\":\""<<queue<<"\",\"configured\":false}\n";log.flush();}}
- if(enabled!=configured)configure(enabled);if(!enabled)return;
+ bool worldReady=worldSeen;
+ if(!optionsApplied||(worldReady&&!worldOptionsApplied)||enabled!=configured)configure(enabled);if(!enabled)return;
  if(!token&&!ok("slGetNewFrameToken(first frame)",getToken(token,&sequence)))return;auto& s=*newest;frame=s.worldFrame;auto nativeQueue=queue;check(nativeQueue->Wait(s.producerFence.Get(),s.producerValue));DXGI_SWAP_CHAIN_DESC1 d{};chain->GetDesc1(&d);auto c=constants(s,d.Width,d.Height);if(!ok("slSetConstants",setConstants(c,*token,viewport)))return;
  sl::Resource z{sl::ResourceType::eTex2d,s.depth.Get(),nullptr,nullptr,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE},mv{sl::ResourceType::eTex2d,s.motion.Get(),nullptr,nullptr,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE};sl::Extent e{0,0,s.width,s.height};sl::ResourceTag tags[]={{&z,sl::kBufferTypeDepth,sl::ResourceLifecycle::eValidUntilPresent,&e},{&mv,sl::kBufferTypeMotionVectors,sl::ResourceLifecycle::eValidUntilPresent,&e}};if(ok("slSetTagForFrame(depth+motion)",setTags(*token,viewport,tags,2,nullptr))){s.tagged=true;s.pending=false;lastTagged=&s;newest=nullptr;lastWorldFrame=s.worldFrame;evaluations++;}
 }
