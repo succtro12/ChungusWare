@@ -1,6 +1,16 @@
+
 # ChungusWare
 
 minecraft bedrock rtx panel. ray reconstruction preset f, internal resolution, frame generation and reflex. press **F8**. settings apply immediately.
+
+<img width="2560" height="1440" alt="Screenshot (230)" src="https://github.com/user-attachments/assets/a4e3da6c-f3af-4c0d-93b8-c6ffd15e682e" />
+
+<img width="2560" height="1440" alt="Screenshot (229)" src="https://github.com/user-attachments/assets/6d1ca47d-820e-441e-925f-9cc267c3b929" />
+
+<img width="1496" height="761" alt="Screenshot 2026-10-04 140027" src="https://github.com/user-attachments/assets/bcef50d7-ccba-4fa7-95a9-d70a19cc814a" />
+
+<img width="1919" height="983" alt="Screenshot 2026-10-04 140215" src="https://github.com/user-attachments/assets/f5db6daf-6c2e-4d91-aadd-5e10af3b4dab" />
+
 
 ## requirements
 
@@ -11,15 +21,15 @@ tested with minecraft 1.26.5203.0, BetterRTX 1.4.4 and ReShade 6.8.0. future ver
 ## install
 
 1. download **ChungusWare.zip** from [releases](https://github.com/succtro12/ChungusWare/releases). close minecraft and extract it.
-2. copy the supplied files beside `Minecraft.Windows.exe`. xbox app: Manage → Files → Browse.
-3. run **INSTALL CHUNGUS.bat**, review the changes and enter `y`.
-4. launch minecraft. press F8.
+2. copy the supplied files beside `Minecraft.Windows.exe`. xbox app: Manage → Files → Browse, or inside C:\XboxGames\Minecraft for Windows\Content
+3. run **INSTALL CHUNGUS.bat**, review the changes and enter `y` to confirm.
+4. launch minecraft. press F8, pray it works
 
 setup downloads official NVIDIA Streamline 2.14.1 and ReShade 6.8.0, verifies hashes and backs up replaced providers. it stops on unknown loader conflicts or an unwritable folder. dont overwrite unrelated mods.
 
 ## controls
 
-resolution presets: fraudulent dlaa (99.9%), quality, balanced, performance, ultra performance and caca mode (144p).
+resolution presets: fraudulent dlaa (99.9%), quality, balanced, performance, ultra performance and caca mode (144p). dlaa is not 100% as it was causing some problems
 
 fg: off or a supported multiplier. reflex is automatic with fg. diagnostics are under **witness protection**. enable **remember settings** to save selections between launches.
 
@@ -31,13 +41,17 @@ manual removal: delete the seven `bedrock_rr_*.dll` files and tools/mascot named
 
 ReShade, NVIDIA prerequisites, BetterRTX, worlds and settings are preserved.
 
-## problems
+## problems / compatibility
+
+works with BetterRTX 1.4.4 and is recommended alongside it
+
+any dlss 5 mods currently do not work, however reshade is available if u wanna add postfx
+
+some resource packs cause issues with temporal accumulation, kellys rtx is a good baseline
+
+if F8 does nothing, run setup with minecraft closed. for rr/fg failures, check **witness protection**
 
 if it doesn't work u have my condolences
-
-if F8 does nothing, run setup with minecraft closed. for rr/fg failures, check **witness protection**. report versions, selected modes and reproduction steps. redact logs before sharing.
-
-no telemetry. runtime messages are static fiction and use no personal data. only setup downloads require internet.
 
 ## build
 
