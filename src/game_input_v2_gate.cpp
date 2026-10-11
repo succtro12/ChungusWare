@@ -23,7 +23,17 @@ void filter(Position& position,GameInputMouseState* state,bool captured,unsigned
     int64_t values[]={state->positionX,state->positionY,state->absolutePositionX,state->absolutePositionY,state->wheelX,state->wheelY};
     if(!position.initialized){position.initialized=true;position.epoch=epoch;for(unsigned i=0;i<6;i++)position.raw[i]=position.delivered[i]=values[i];}
     bool transition=position.epoch!=epoch;
-    for(unsigned i=0;i<6;i++){if(!captured&&!transition)position.delivered[i]+=values[i]-position.raw[i];position.raw[i]=values[i];}
+    for(unsigned i=0;i<6;i++){
+        // Absolute coordinates are locations, not cumulative movement. Retain
+        // their frozen value only while captured, then pass through immediately
+        // (including the close-transition sample) to keep hit testing aligned.
+        // Camera/wheel counters still discard motion collected during capture.
+        if(!captured){
+            if(i==2||i==3)position.delivered[i]=values[i];
+            else if(!transition)position.delivered[i]+=values[i]-position.raw[i];
+        }
+        position.raw[i]=values[i];
+    }
     position.epoch=epoch;
     state->positionX=position.delivered[0];state->positionY=position.delivered[1];state->absolutePositionX=position.delivered[2];state->absolutePositionY=position.delivered[3];state->wheelX=position.delivered[4];state->wheelY=position.delivered[5];
     if(captured){state->buttons=GameInputMouseNone;blocked++;}
