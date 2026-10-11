@@ -43,7 +43,7 @@ ReShade, NVIDIA prerequisites, BetterRTX, worlds and settings are preserved.
 
 ## problems / compatibility
 
-[v1.01 changes](CHANGELOG.md). water/cloud and glass fixes are included. dark cave water at night can still be noisy with rr. saved fg can occasionally start with worse fps; toggling fg on then off recovered it during testing.
+[v1.01 changes](CHANGELOG.md). water/cloud fixes are included. dark cave water at night can still be noisy with rr. saved fg can occasionally start with worse fps; toggling fg on then off recovered it during testing.
 
 works with BetterRTX 1.4.4 and is recommended alongside it
 
@@ -69,4 +69,4 @@ output: `dist/`. dependencies are not bundled in the repo. rebuilt binaries need
 
 <sub>First-party source is furnished pursuant to the <a href="LICENSE">MIT License</a>, without warranty as therein specified. Third-party materials remain subject to their respective terms and notices; no grant herein shall be construed to confer rights therein. See <a href="THIRD_PARTY_NOTICES.md">third-party notices</a> and <a href="ASSET_NOTES.md">asset provenance</a>; retain applicable notices upon redistribution. Rights to the supplied mascot and embedded boom remain unverified; no representation of originality, authorization or clearance is made. The mascot is independently replaceable. Tahoma is loaded locally from Windows; the bundled fallback uses OFL-licensed W95FA. ChungusWare is an unofficial community project and is not affiliated with or endorsed by NVIDIA, Mojang/Microsoft, BetterRTX, Warner Bros., or their respective affiliates. This statement confers no rights.</sub>
 
-v1.01 zip sha-256: `311fc06ec382415cb75bb9082896437490b2c6def5ad8829f9ea73a6390af458`
+v1.01 zip sha-256: `597ac1535b11db792e70cf28ffd37b31d1d610adaeb50ad88b658002debe7df1`

@@ -93,15 +93,6 @@ void main(uint3 id:SV_DispatchThreadID) {
  // Choose one physical surface for all guides, rather than averaging depths
  // or normals belonging to different layers. The tie is field-order stable.
  uint2 guide=weight>0.5?other:weight<0.5?q:(q.x<other.x?q:other);
- // Equal-weight finite geometry can include a smooth front pane and the
- // detailed transmitted surface. Resolve that ambiguity by depth instead of
- // physical bank order. Sky/geometry ties retain the existing stable choice.
- if(weight==0.5){
-  float front=rayLength.Load(int3(q,0));
-  float back=rayLength.Load(int3(other,0));
-  if(isfinite(front)&&isfinite(back)&&front>0&&back>0&&front<65504&&back<65504&&front!=back)
-   guide=front>back?q:other;
- }
  float distance=rayLength.Load(int3(guide,0));
  float3 direction=viewDirection.Load(int3(guide,0)).xyz;
  float4 n=normalGuide.Load(int3(guide,0));

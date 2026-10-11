@@ -42,7 +42,7 @@ int wmain(int argc,wchar_t** argv){try{
   for(auto& input:inputs){D3D12_SHADER_RESOURCE_VIEW_DESC v{};v.Format=input->GetDesc().Format;v.ViewDimension=D3D12_SRV_DIMENSION_TEXTURE2D;v.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;v.Texture2D.MipLevels=1;g.device->CreateShaderResourceView(input.Get(),&v,cpu);cpu.ptr+=stride;}
   for(auto& output:outputs){D3D12_UNORDERED_ACCESS_VIEW_DESC v{};v.Format=output->GetDesc().Format;v.ViewDimension=D3D12_UAV_DIMENSION_TEXTURE2D;g.device->CreateUnorderedAccessView(output.Get(),nullptr,&v,cpu);cpu.ptr+=stride;}
   resolve.record(g.list.Get(),heap.Get(),w,h,fw,frame,view,true);g.submit();
-  bool changed=!opaque&&std::isfinite(weight)&&weight>=0&&weight<=1;bool right=weight>.5f||(weight==.5f&&leftDepth<65504&&rightDepth<65504&&rightDepth>leftDepth);
+  bool changed=!opaque&&std::isfinite(weight)&&weight>=0&&weight<=1;bool right=weight>.5f;
   for(unsigned i=0;i<6;i++){
    auto desc=outputs[i]->GetDesc();D3D12_PLACED_SUBRESOURCE_FOOTPRINT fp{};UINT64 bytes=0;g.device->GetCopyableFootprints(&desc,0,1,0,&fp,nullptr,nullptr,&bytes);auto read=buffer(g.device.Get(),bytes,D3D12_HEAP_TYPE_READBACK,D3D12_RESOURCE_STATE_COPY_DEST);
    D3D12_RESOURCE_BARRIER b{};b.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;b.Transition={outputs[i].Get(),D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COPY_SOURCE};g.list->ResourceBarrier(1,&b);D3D12_TEXTURE_COPY_LOCATION to{},from{};to.pResource=read.Get();to.Type=D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;to.PlacedFootprint=fp;from.pResource=outputs[i].Get();from.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;g.list->CopyTextureRegion(&to,0,0,0,&from,nullptr);g.submit();void* data=nullptr;check(read->Map(0,nullptr,&data),"Readback");unsigned channels=i>=4?1:4;
@@ -50,7 +50,7 @@ int wmain(int argc,wchar_t** argv){try{
     float want=-123.f;
     unsigned sampleX=std::min(x,(w&~1u)-1u)>>1u;
     float pixelRightDepth=impulse==3&&((y==3&&(sampleX==3||sampleX==5))||(sampleX==4&&(y==2||y==4)))?rightDepth*2:rightDepth;
-    bool right=weight>.5f||(weight==.5f&&leftDepth<65504&&pixelRightDepth<65504&&pixelRightDepth>leftDepth);
+    bool right=weight>.5f;
     if(changed){
      if(i==0){
       unsigned px=std::min(x,(w&~1u)-1u),qx=(px>>1u)+(((px^y)&1u)==((frame&1u)^1u)?0u:fw);
